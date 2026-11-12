@@ -2,9 +2,21 @@
 
 An MS final-year project foundation for a US electronics storefront with Salesforce B2C Commerce integration and grounded shopping recommendations.
 
-**Current status: milestone 1 implemented.** Includes a 50,000-product synthetic dataset generator, CSV/JSONL export, SQLite lexical search baseline, local read API, tests, academic plan, and Salesforce prerequisites. The storefront, vector RAG, OpenAI integration, Salesforce connection, authentication, dashboard, and checkout are planned; they are not implemented or deployed yet.
+**Current status:** runnable local Streamlit electronics shop, synthetic catalog, lexical search, optional OpenAI explanations, and a read-only Salesforce B2C connection test. Real Salesforce catalog/cart/order integration, automatic OAuth login, vector retrieval, payment processing, and durable customer accounts are not implemented.
 
-## Run locally
+## Run the Streamlit website (recommended)
+
+[Windows and VS Code setup guide](docs/WINDOWS_STREAMLIT.md)
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
+```
+
+Visit http://localhost:8501. The bundled catalog is extracted and indexed automatically. No credentials are needed for local shopping. To enable external calls, copy `.streamlit/secrets.toml.example` to the ignored `.streamlit/secrets.toml`, enter values locally, and use Connections to test. Never paste secrets into chat or commit them.
+
+## Run the standalone catalog API (optional)
 Requires Python 3.10+ with SQLite FTS5; no third-party dependencies or API key needed.
 
 ```bash
@@ -27,11 +39,11 @@ Use keyword queries for this baseline. Natural-language intent and budget extrac
 50,000 unique fictional SKUs, 5,000 per category: TV, mobile, laptop, tablet, smartwatch, headphones, camera, monitor, speaker, and gaming console. Prices, stock, brands, and specifications are synthetic; images are absent. This is a controlled experimental dataset, not 50,000 real-world models. Uncompressed generated exports and the SQLite index are ignored by Git; regenerate them with the command above. A small committed sample makes the schema easy to inspect. The generator writes `data/manifest.json` with provenance, count, seed, and JSONL checksum.
 
 ## Credentials
-No API key is included, needed, or used at this stage. Revoke any key previously posted in chat. Supply a replacement only through secure environment configuration when the server-side LLM integration is ready. `.env.example` documents planned names and contains no values. Milestone 1 does not load a `.env` file. Never expose an LLM key in browser code.
+No API key is included. Local catalog features require none; OpenAI explanations require a key configured locally. Revoke any key previously posted in chat. Supply a replacement only through secure environment configuration when the server-side LLM integration is ready. `.streamlit/secrets.toml.example` documents the active Streamlit settings. A `.env` file is not automatically loaded. Never expose an LLM key in browser code.
 
 ## Academic and implementation documents
 - [Project scope, architecture, milestones, and evaluation](docs/PROJECT_PLAN.md)
 - [Salesforce integration checklist](docs/SALESFORCE_SETUP.md)
 - [Fictional store policies for future RAG](knowledge/store-policies.md)
 
-All policies and inventory are academic examples. This project currently accepts no purchases and makes no real product or warranty claims.
+All policies and inventory are academic examples. This project accepts no real purchases and makes no real product or warranty claims.

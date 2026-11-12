@@ -11,3 +11,4 @@ data/*
 *.log
 .DS_Store
 !data/electroguide-catalog-50000.zip
+.streamlit/secrets.toml
