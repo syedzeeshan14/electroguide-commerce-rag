@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+data/*
+!data/.gitkeep
+!data/sample-products.jsonl
+*.log
+.DS_Store
