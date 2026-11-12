@@ -134,11 +134,18 @@ class SalesforceCatalogTests(unittest.TestCase):
             row['Name']='Salesforce test product'
             client.imported_products.return_value=[row]
             sync_product_catalog(client,root/'data')
-            with patch('app.runtime.ROOT',root),patch('app.runtime.settings',return_value={'CATALOG_SOURCE':'salesforce_catalog_snapshot','OPENAI_API_KEY':''}):
+            from io import BytesIO
+            from PIL import Image
+            from app.product_images import cache_directory,store_cached_image
+            config={'CATALOG_SOURCE':'salesforce_catalog_snapshot','OPENAI_API_KEY':'','SALESFORCE_INSTANCE_URL':'https://demo.my.salesforce.com'}
+            photo=BytesIO();Image.new('RGB',(20,20),'green').save(photo,format='PNG')
+            store_cached_image(cache_directory(root,config['SALESFORCE_INSTANCE_URL']),row['Id'],photo.getvalue(),{})
+            with patch('app.runtime.ROOT',root),patch('app.runtime.settings',return_value=config):
                 app=AppTest.from_file(str(Path(__file__).resolve().parents[1]/'streamlit_app.py'),default_timeout=30).run()
                 self.assertFalse(app.exception)
                 self.assertTrue(any('USD demo prices' in caption.value for caption in app.caption))
                 self.assertTrue(any('Salesforce test product' in item.value for item in app.markdown))
+                self.assertTrue(any('Image synced from Salesforce' in caption.value for caption in app.caption))
                 self.assertEqual(sum(button.label=='Add to bag' for button in app.button),1)
                 next(button for button in app.button if button.label=='Add to bag').click().run()
                 self.assertFalse(app.exception)

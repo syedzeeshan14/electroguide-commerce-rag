@@ -81,3 +81,5 @@ For the optional standalone lexical API: `python scripts/generate_catalog.py`, `
 [Project research plan](docs/PROJECT_PLAN.md) · [Salesforce prerequisites](docs/SALESFORCE_SETUP.md)
 
 No real payments, persistent customer accounts, real orders, live inventory synchronization, or Salesforce checkout are implemented.
+
+[Sync Salesforce product Media images into the storefront](docs/SALESFORCE_IMAGES.md).

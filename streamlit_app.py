@@ -5,6 +5,7 @@ import streamlit as st
 from app.design import CSS, illustration, LABELS
 from app.runtime import ROOT, prepare_catalog, settings
 from app.semantic import EmbeddingIndex
+from app.product_images import cached_image_path
 from app.shopping import recommend, constraints, subtotal, comparison_rows
 from app.integrations import ConnectionFailure, grounded_answer, extract_preferences
 from scripts.generate_catalog import CATEGORIES
@@ -41,7 +42,11 @@ elif getattr(catalog,'source','demo')=='salesforce_catalog_snapshot':
 
 def product_card(product,prefix,reason=None):
     with st.container(border=True):
-        st.markdown('<div class="product-art">'+illustration(product['category'])+'</div>',unsafe_allow_html=True)
+        photo=cached_image_path(product,ROOT,config)
+        if photo:
+            st.image(str(photo),width='stretch')
+        else:
+            st.markdown('<div class="product-art">'+illustration(product['category'])+'</div>',unsafe_allow_html=True)
         specs=product['specifications']
         highlights=[]
         for key,label in [('ram_gb','GB RAM'),('storage_gb','GB storage'),('screen_inches','″ display'),('resolution',''),('battery_hours','h battery'),('megapixels','MP'),('case_mm','mm'),('power_watts','W')]:
@@ -54,7 +59,7 @@ def product_card(product,prefix,reason=None):
         with st.expander('Product details'):
             for key,value in specs.items():
                 st.write(f"**{key.replace('_',' ').title()}:** {value}")
-            st.caption(f"{product['id']} · Representative illustration")
+            st.caption(f"{product['id']} · "+('Image synced from Salesforce' if photo else 'Representative illustration'))
         if st.button('Add to bag',type='primary',width='stretch',key=f"{prefix}-{product['id']}"):
             existing=st.session_state.cart.get(product['id'])
             quantity=existing['quantity']+1 if existing else 1
