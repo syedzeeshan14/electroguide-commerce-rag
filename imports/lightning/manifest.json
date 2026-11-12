@@ -1,0 +1,16 @@
+{
+  "count": 50000,
+  "sample_count": 100,
+  "max_batch_size": 10000,
+  "format": "Lightning Commerce CSV Import (not generic Product2 Data Loader)",
+  "sample_sha256": "ab9009b4a8570c0f5649a700205ec280e254e20ca308fc3a596b5dad64cecc39",
+  "archive_sha256": "06f67b7acadcc3dbc51ca906962cf30790c456dec9b8ae3d6dfdc52b1196277a",
+  "synthetic": true,
+  "notes": [
+    "Sample overlaps batch 1. Match by existing SKU when importing again; review duplicate handling.",
+    "Select the correct catalog and USD price book in the Commerce importer.",
+    "Stock is metadata for simulation only; this file does not populate Salesforce inventory.",
+    "No image URLs or real brand/manufacturer claims are included.",
+    "Store entitlement, search indexing, permissions, and extra org validation rules must be checked."
+  ]
+}

@@ -34,6 +34,8 @@ match.button('Find my match',width='stretch',on_click=navigate,args=('Match',))
 count=sum(p['quantity'] for p in st.session_state.cart.values())
 bag.button(f'Bag ({count})',width='stretch',on_click=navigate,args=('Bag',))
 st.divider()
+if getattr(catalog,'source','demo')=='lightning_snapshot':
+    st.caption('Catalog synced from Salesforce · Availability and checkout are simulated')
 
 def product_card(product,prefix,reason=None):
     with st.container(border=True):

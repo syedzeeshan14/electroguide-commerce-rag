@@ -51,3 +51,7 @@ The catalog is synthetic; “best” means best under the implemented feature/pr
 - OpenAI 401/429: verify key, model access, billing/quota locally.
 - Salesforce 401/403: verify SLAS token expiration, scopes, organization, and site assignment.
 - Never share screenshots containing secret values.
+
+## Lightning D2C Commerce
+
+For the user’s Lightning D2C store, use the [Commerce CSV import guide](LIGHTNING_D2C_IMPORT.md) and [Lightning OAuth/snapshot connector](LIGHTNING_CONNECTION.md). The B2C short-code/SLAS instructions above apply only to a separate B2C instance and should not be followed for Lightning. The default local demo remains available.

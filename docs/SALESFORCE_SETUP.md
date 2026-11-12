@@ -1,4 +1,6 @@
-# Salesforce integration prerequisites
+# Legacy B2C Commerce integration prerequisites
+
+**For this project’s confirmed Lightning D2C environment, follow [Lightning import](LIGHTNING_D2C_IMPORT.md) and [OAuth/snapshot setup](LIGHTNING_CONNECTION.md) instead.** The B2C instructions below apply only if a separate B2C Commerce instance is provisioned.
 
 User reports B2C Commerce. The supplied URL is a Lightning Commerce Stores URL, which alone does not verify a B2C Commerce instance or SCAPI access. No Salesforce connection has been made.
 

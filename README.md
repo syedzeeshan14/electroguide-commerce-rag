@@ -24,15 +24,20 @@ Three top navigation buttons: **Shop**, **Find my match**, and **Bag**. No sideb
 
 Try: `A laptop for studying under $1500 with at least 16GB RAM`.
 
+## Import into Lightning D2C Commerce
+
+[Upload the 100-product sample and connect the project](docs/LIGHTNING_D2C_IMPORT.md). Includes a Commerce-format CSV, five 10k import batches, OAuth read diagnostics, and an optional Salesforce-linked catalog snapshot mode. No live org connection or import has been verified. The snapshot uses selected price-book prices and simulated stock/checkout; it is an owner-operated demo, not public shopper authorization.
+
 ## Where OpenAI and Salesforce are used
 
 | Component | Current role | Current limitation |
 | --- | --- | --- |
 | Local catalog | Supplies the storefront and all product recommendations | 50,000 fictional SKUs; prices, stock, and specifications are synthetic |
 | OpenAI API key | Server-side calls interpret requests, embed catalog/query text for semantic retrieval, and explain the selected products | Optional; requires a valid locally configured replacement key and billing/model access. Without it, specification-based matching still works and is labeled accordingly |
-| Salesforce B2C Commerce | Read-only SCAPI product-search diagnostic, run by the owner from the terminal | Not connected to storefront inventory, recommendations, baskets, or orders; no live credentials have been verified |
+| Lightning D2C Commerce | Commerce CSV import package, owner OAuth/read connector, optional catalog snapshot used by the shop and finder | Requires local OAuth/store/price-book configuration and a successful sync; no live org verification, real stock, shopper auth or checkout |
+| Salesforce B2C Commerce | Separate legacy read-only SCAPI diagnostic | Not applicable to the user’s Lightning D2C setup |
 
-The app does **not** claim that Salesforce is already powering the shopping flow. The next Salesforce integration step requires the actual B2C Business Manager/API identifiers and a configured shopper OAuth flow, followed by catalog mapping, price/stock validation, and basket integration. A Lightning Commerce Stores URL alone does not verify these capabilities.
+The app defaults to its local demo catalog. After importing into Lightning D2C Commerce and completing OAuth/read validation, an owner can explicitly switch to a synced snapshot. B2C Business Manager/SLAS settings do not apply to the Lightning connector. [Connection instructions](docs/LIGHTNING_CONNECTION.md).
 
 ## Matching behavior
 
