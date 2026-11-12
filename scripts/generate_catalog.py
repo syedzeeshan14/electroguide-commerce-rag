@@ -18,7 +18,9 @@ CATEGORIES = {
     'speaker': ('Speaker', 29, 799, ['portable', 'home'], [10, 20, 40, 80]),
     'gaming': ('Gaming console', 199, 799, ['home console', 'handheld'], [256, 512, 1024]),
 }
-BRANDS = ['AsterDemo', 'NovalumeDemo', 'CircuitBayDemo', 'VoltoraDemo', 'PinnacleDemo']
+BRANDS = ['Aster', 'Novalume', 'CircuitBay', 'Voltora', 'Pinnacle']
+CATALOG_VERSION = 2
+FAMILIES = {'tv':['Vista','Cinema','Horizon'], 'mobile':['Pulse','Nova','Arc'], 'laptop':['Airbook','Studio','Workmate'], 'tablet':['Slate','Canvas','Tab'], 'smartwatch':['Tempo','Active','Orbit'], 'headphones':['Quiet','Wave','Studio Sound'], 'camera':['Focus','Frame','Capture'], 'monitor':['View','Clarity','Ultraview'], 'speaker':['Echoform','Room','Roam'], 'gaming':['Playbox','Pocket Play','Gamehub']}
 
 def generate(count=50000, seed=42):
     if count < 1:
@@ -29,10 +31,13 @@ def generate(count=50000, seed=42):
         category = categories[i % len(categories)]
         label, low, high, types, sizes = CATEGORIES[category]
         variant = i // len(categories) + 1
-        brand, kind, size = rng.choice(BRANDS), rng.choice(types), rng.choice(sizes)
+        brand = rng.choice(BRANDS)
+        tier = rng.randrange(3)
+        kind = types[min(tier, len(types)-1)]
+        size = sizes[min(len(sizes)-1, tier + rng.randrange(2))]
         specs = {'color': rng.choice(['black', 'silver', 'blue', 'white'])}
         if category in ('mobile', 'laptop', 'tablet', 'gaming'):
-            specs.update(storage_gb=size, ram_gb=rng.choice([8, 16, 32]) if category == 'laptop' else rng.choice([4, 8, 12]), platform=kind)
+            specs.update(storage_gb=size, ram_gb=[8,16,32][tier] if category == 'laptop' else [4,8,12][tier], platform=kind)
         elif category in ('tv', 'monitor'):
             specs.update(screen_inches=size, resolution=kind, refresh_hz=rng.choice([60, 120]))
         elif category == 'smartwatch':
@@ -43,15 +48,22 @@ def generate(count=50000, seed=42):
             specs.update(camera_type=kind, megapixels=size)
         else:
             specs.update(speaker_type=kind, power_watts=size)
-        price = round(rng.uniform(low, high), 2)
+        price = round((low + (high-low)*([0.08,0.38,0.78][tier] + rng.uniform(0,.12))) / 10)*10 - .01
+        family = FAMILIES[category][tier]
+        generation = (variant-1)//250+1
+        detail = f'{size}GB' if category in ('mobile','tablet','gaming') else (f'{size}GB SSD' if category=='laptop' else (f'{size} inch' if category in ('tv','monitor') else (f'{size}mm' if category=='smartwatch' else (f'{size}MP' if category=='camera' else f'{size}h' if category=='headphones' else f'{size}W'))))
+        use_case = ['everyday essentials','study work productivity','creative entertainment'][tier]
+        if category=='laptop':
+            specs.update(screen_inches=[13.3,14,16][tier],processor=['Entry 4-core','Performance 8-core','Creator 12-core'][tier],battery_hours=[10,12,8][tier])
+        name = f'{brand} {family} {generation} · {detail}'
         yield {
             'id': f'EG-{i+1:06d}', 'sku': f'DEMO-{category.upper()}-{variant:05d}',
-            'name': f'{brand} {label} Series {variant:05d}', 'brand': brand,
+            'name': name, 'brand': brand,
             'category': category, 'price': price, 'currency': 'USD',
             'stock': rng.choice([0, 5, 10, 25, 50, 100]),
-            'description': f'Fictional {label.lower()} for academic testing. ' + '; '.join(f'{k}: {v}' for k,v in specs.items()),
+            'description': f'{label} concept for {use_case}. Synthetic specifications: ' + '; '.join(f'{k}: {v}' for k,v in specs.items()),
             'specifications': specs, 'synthetic': True,
-            'image_url': None,
+            'image_url': None, 'use_case': use_case, 'catalog_version': CATALOG_VERSION,
         }
 
 def main():
@@ -64,13 +76,13 @@ def main():
     path = args.output / 'products.jsonl'
     csv_path = args.output / 'products.csv'
     with path.open('w') as f, csv_path.open('w', newline='') as c:
-        fields = ['id','sku','name','brand','category','price','currency','stock','description','specifications','synthetic','image_url']
+        fields = ['id','sku','name','brand','category','price','currency','stock','description','specifications','synthetic','image_url','use_case','catalog_version']
         writer = csv.DictWriter(c, fieldnames=fields)
         writer.writeheader()
         for product in generate(args.count, args.seed):
             f.write(json.dumps(product, sort_keys=True) + '\n')
             writer.writerow({**product, 'specifications': json.dumps(product['specifications'], sort_keys=True)})
-    manifest = {'count': args.count, 'seed': args.seed, 'synthetic': True,
+    manifest = {'catalog_version': CATALOG_VERSION, 'count': args.count, 'seed': args.seed, 'synthetic': True,
                 'source': 'Locally generated fictional data, not scraped or licensed retailer inventory',
                 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                 'limitations': ['No real products, reviews, images, sales, or compatibility claims',

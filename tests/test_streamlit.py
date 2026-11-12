@@ -8,7 +8,7 @@ class StreamlitTests(unittest.TestCase):
     def test_shop_cart_order_and_pages(self):
         app=AppTest.from_file(str(Path(__file__).resolve().parents[1]/'streamlit_app.py'),default_timeout=30).run()
         self.assertFalse(app.exception)
-        app.button[0].click().run()
+        next(b for b in app.button if b.label=='Add to cart').click().run()
         self.assertTrue(app.session_state['cart'])
         app.sidebar.radio[0].set_value('Cart & orders').run()
         next(b for b in app.button if b.label=='Place simulated order').click().run()
@@ -24,7 +24,7 @@ class StreamlitTests(unittest.TestCase):
         self.assertFalse(app.exception)
         self.assertTrue(app.session_state['messages'][-1]['products'])
         self.assertTrue(all(p['price']<=900 for p in app.session_state['messages'][-1]['products']))
-        app.button[0].click().run()
+        next(b for b in app.button if b.label=='Add to cart').click().run()
         self.assertTrue(app.session_state['cart'])
         self.assertFalse(app.exception)
 

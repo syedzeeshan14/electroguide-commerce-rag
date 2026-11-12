@@ -1,24 +1,33 @@
 from pathlib import Path
 import json
+from html import escape
 import os
 import sqlite3
 import uuid
 import zipfile
 import streamlit as st
 from app.catalog import Catalog
+from app.design import CSS, illustration, LABELS
+from scripts.generate_catalog import CATALOG_VERSION, BRANDS
 from app.shopping import retrieve, subtotal
 from app.integrations import ConnectionFailure, grounded_answer, salesforce_search
 from scripts.generate_catalog import CATEGORIES
 
 ROOT = Path(__file__).resolve().parent
-st.set_page_config(page_title='ElectroGuide | Electronics', page_icon='⚡',layout='wide')
+st.set_page_config(page_title='ElectroGuide | Thoughtful tech', page_icon='⚡',layout='wide')
+st.markdown(CSS,unsafe_allow_html=True)
 
 @st.cache_resource
 def prepare_catalog():
     data=ROOT/'data'
     source=data/'products.jsonl'
-    database=data/'catalog.sqlite'
-    if not source.exists():
+    database=data/f'catalog-v{CATALOG_VERSION}.sqlite'
+    manifest_path=data/'manifest.json'
+    try:
+        local_version=json.loads(manifest_path.read_text()).get('catalog_version',1)
+    except (FileNotFoundError,ValueError):
+        local_version=0
+    if not source.exists() or local_version<CATALOG_VERSION:
         with zipfile.ZipFile(data/'electroguide-catalog-50000.zip') as archive:
             # Extract only the known data members, never arbitrary paths.
             for name in ('products.jsonl','products.csv','manifest.json'):
@@ -49,55 +58,85 @@ for key,default in {'cart':{},'wishlist':{},'compare':{},'orders':[],'messages':
     if key not in st.session_state:
         st.session_state[key]=default
 
-st.title('⚡ ElectroGuide')
-st.caption('Your electronics discovery desk • United States • USD')
-st.info('Academic demo: fictional products and stock. Checkout is simulated. Cart, wishlist, and orders last only for this browser session.')
+st.markdown('<div class="topline"><div class="brand">electro<span>guide.</span></div><div class="topnote">Thoughtful tech. A little more you. &nbsp; / &nbsp; US · USD</div></div>',unsafe_allow_html=True)
+st.sidebar.markdown('<div class="brand">eg<span>.</span></div><div class="eyebrow">Your tech, discovered</div>',unsafe_allow_html=True)
 page=st.sidebar.radio('Explore',['Shop','Shopping assistant','Compare','Wishlist','Cart & orders','Catalog dashboard','Connections'])
-st.sidebar.caption('Local catalog • 50,000 synthetic products')
+st.sidebar.divider()
+st.sidebar.metric('Your bag',sum(p['quantity'] for p in st.session_state.cart.values()))
+st.sidebar.caption(f"{len(st.session_state.wishlist)} saved · {len(st.session_state.compare)} to compare")
+st.sidebar.caption('Academic demo · Fictional products · Simulated checkout')
 
 def product_card(product, prefix):
     with st.container(border=True):
-        st.subheader(product['name'])
-        st.caption(f"{product['category'].title()} · {product['id']}")
-        st.markdown(f"**${product['price']:,.2f}** · {product['stock']} available (demo)")
-        with st.expander('Specifications'):
-            st.json(product['specifications'])
-        a,b,c=st.columns(3)
-        if a.button('Add to cart',key=f"{prefix}-cart-{product['id']}",disabled=product['stock']<=0):
+        st.markdown('<div class="product-art">'+illustration(product['category'])+'</div>',unsafe_allow_html=True)
+        specs=product['specifications']
+        highlights=[]
+        for key,label in [('ram_gb','GB RAM'),('storage_gb','GB storage'),('screen_inches','″ display'),('resolution',''),('battery_hours','h battery'),('megapixels','MP'),('case_mm','mm'),('power_watts','W')]:
+            if key in specs:
+                highlights.append(f"{specs[key]}{label}")
+        summary=' · '.join(highlights[:3]) or specs.get('form_factor',specs.get('color',''))
+        st.markdown(f'<div class="category-label">{escape(LABELS[product["category"]])} / {escape(product["brand"])}</div><div class="product-name">{escape(product["name"])}</div><div class="spec-line">{escape(summary)}</div><div class="price-row"><span class="price">${product["price"]:,.2f}</span><span class="stock-pill">In stock · demo</span></div>',unsafe_allow_html=True)
+        with st.expander('Explore details'):
+            st.caption(f"{product['id']} · {product['sku']} · Synthetic product")
+            for key,value in specs.items():
+                st.write(f"**{key.replace('_',' ').title()}:** {value}")
+            st.caption('Category illustration; not a photograph of this fictional model.')
+        if st.button('Add to cart',width='stretch',type='primary',key=f"{prefix}-cart-{product['id']}",disabled=product['stock']<=0):
             existing=st.session_state.cart.get(product['id'])
             quantity=existing['quantity']+1 if existing else 1
             if quantity<=product['stock']:
                 st.session_state.cart[product['id']]={**product,'quantity':quantity}
-                st.toast('Added to cart')
+                st.rerun()
             else:
                 st.warning('Demo stock limit reached.')
-        if b.button('Save',key=f"{prefix}-save-{product['id']}"):
+        b,c=st.columns(2)
+        if b.button('Save',width='stretch',key=f"{prefix}-save-{product['id']}"):
             st.session_state.wishlist[product['id']]=product
-            st.toast('Saved to wishlist')
-        if c.button('Compare',key=f"{prefix}-compare-{product['id']}"):
+            st.rerun()
+        if c.button('Compare',width='stretch',key=f"{prefix}-compare-{product['id']}"):
             if len(st.session_state.compare)<4 or product['id'] in st.session_state.compare:
                 st.session_state.compare[product['id']]=product
-                st.toast('Added to comparison')
+                st.rerun()
             else:
                 st.warning('Compare up to four products. Clear the comparison to start again.')
 
 if page=='Shop':
-    st.header('Find your next device')
-    a,b,c=st.columns([2,1,1])
-    query=a.text_input('Search keywords',placeholder='e.g. laptop, 4K, black')
-    category=b.selectbox('Category',['All',*CATEGORIES])
-    budget=c.number_input('Maximum price (USD)',min_value=0.0,value=3500.0,step=50.0)
-    products=catalog.search(query=query,category=None if category=='All' else category,max_price=budget,limit=12)
-    st.caption('Showing up to 12 in-stock matches. Use filters to narrow results.')
+    st.markdown('<div class="hero"><div><div class="eyebrow">Good technology. Great possibilities.</div><h1>Find your next<br>everyday upgrade.</h1><p>From a better workday to a bigger movie night. Discover devices that fit your world, your needs, and your budget.</p><span class="hero-tag">Explore 10 categories &nbsp; ↗</span></div><div class="hero-art">'+illustration('laptop','#c4e8a5')+'</div></div>',unsafe_allow_html=True)
+    category_columns=st.columns(5)
+    for index,key in enumerate(['laptop','mobile','headphones','tv','smartwatch']):
+        if category_columns[index].button(LABELS[key],key='category-'+key,width='stretch'):
+            st.session_state['shop_category']=key
+    st.markdown('<div class="section-heading"><div class="section-title">A good place to start</div><span>Find something that feels like you</span></div>',unsafe_allow_html=True)
+    a,b,c,d=st.columns([2.3,1.2,1.1,1.2])
+    query=a.text_input('Find a device',placeholder='Try laptops under $900, or 4K TV')
+    category=b.selectbox('Category',['All',*CATEGORIES],format_func=lambda x: LABELS.get(x,x),key='shop_category')
+    budget=c.number_input('Budget (USD)',min_value=0.0,value=3500.0,step=50.0)
+    sort_label=d.selectbox('Sort by',['Featured','Price: low to high','Price: high to low'])
+    from app.shopping import constraints
+    parsed_category,parsed_budget=constraints(query)
+    active_category=None if category=='All' else category
+    if parsed_category and active_category is None:
+        active_category=parsed_category
+    active_budget=min(budget,parsed_budget) if parsed_budget is not None else budget
+    # Natural-language category/budget queries use explicit filters; keyword queries use FTS.
+    keywords='' if parsed_category and parsed_budget is not None else query
+    if active_category and query.lower().strip() in (active_category,LABELS.get(active_category,'').lower()):
+        keywords=''
+    extra1,extra2=st.columns([1,3])
+    brand=extra1.selectbox('Brand',['All brands',*BRANDS])
+    page_number=extra2.number_input('Page',min_value=1,value=1,step=1)
+    sort={'Featured':'featured','Price: low to high':'price_low','Price: high to low':'price_high'}[sort_label]
+    products=catalog.search(query=keywords,category=active_category,max_price=active_budget,limit=12,sort=sort,offset=(page_number-1)*12,brand=None if brand=='All brands' else brand)
+    st.caption(f"{len(products)} picks · Page {page_number} · Up to ${active_budget:,.0f}" + (' · '+LABELS[active_category] if active_category else ' · All categories'))
     if not products:
-        st.warning('No products match. Try fewer keywords or increase your budget.')
+        st.markdown('<div class="empty"><h3>No matches this time.</h3><p>Try a broader search, a higher budget, or page 1.</p></div>',unsafe_allow_html=True)
     columns=st.columns(3)
     for index,product in enumerate(products):
         with columns[index%3]:
             product_card(product,'shop')
 
 elif page=='Shopping assistant':
-    st.header('Let’s find a good fit')
+    st.markdown('<div class="assistant-banner"><div class="eyebrow">A little guidance goes a long way</div><h2>Let’s find your kind of tech.</h2><p>Tell us what you’re looking for and what you’d like to spend.</p></div>',unsafe_allow_html=True)
     st.caption('Try “Recommend a laptop under $900”. Category and budget filtering are supported; use-case ranking and vector search are future work.')
     for index,message in enumerate(st.session_state.messages):
         with st.chat_message(message['role']):
@@ -207,3 +246,5 @@ else:
         except ConnectionFailure as error:
             st.error(str(error))
     st.warning('A Lightning username/password is not a B2C SCAPI credential. Obtain the actual B2C identifiers and a SLAS shopper token; never enter your Salesforce password here.')
+
+st.markdown('<div class="footer"><strong>electroguide.</strong> &nbsp; Thoughtful tech, made personal.<br>University research prototype · All brands, products, prices, and availability are synthetic. Original category illustrations are representative. No real payments. Session-only cart and orders.</div>',unsafe_allow_html=True)

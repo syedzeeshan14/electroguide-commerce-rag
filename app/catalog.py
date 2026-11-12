@@ -23,7 +23,7 @@ class Catalog:
                 self.connection.execute('INSERT INTO product_search VALUES (?,?)', (p['id'], ' '.join([p['name'],p['category'],p['description']])))
             self.connection.execute('CREATE INDEX filters ON products(category,price,stock)')
 
-    def search(self, query='', category=None, max_price=None, in_stock=True, limit=10):
+    def search(self, query='', category=None, max_price=None, in_stock=True, limit=10, sort='relevance', offset=0, brand=None):
         limit = max(1, min(int(limit), 50))
         words = re.findall(r'[a-z0-9]+', query.lower())
         tokens = [ALIASES.get(word, word) for word in words]
@@ -45,6 +45,15 @@ class Catalog:
             params.append(float(max_price))
         if in_stock:
             clauses.append('p.stock>0')
+        if brand:
+            clauses.append("json_extract(p.payload, '$.brand')=?")
+            params.append(brand)
+        if sort == 'price_low':
+            order = 'p.price, p.id'
+        elif sort == 'price_high':
+            order = 'p.price DESC, p.id'
+        elif sort == 'featured':
+            order = 'CAST(substr(p.id,4) AS INTEGER)'
         where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
-        sql = 'SELECT p.payload FROM products p' + join + where + ' ORDER BY ' + order + ' LIMIT ?'
-        return [json.loads(row['payload']) for row in self.connection.execute(sql, [*params,limit])]
+        sql = 'SELECT p.payload FROM products p' + join + where + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?'
+        return [json.loads(row['payload']) for row in self.connection.execute(sql, [*params,limit,max(0,int(offset))])]

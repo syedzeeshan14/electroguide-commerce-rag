@@ -52,3 +52,8 @@ The Connections page makes a read-only product-search request and shows a small 
 - Invalid secrets TOML: put values inside double quotes and avoid stray quotation marks/newlines. Never share a screenshot containing values.
 - OpenAI HTTP 401/429: check the replacement key, model access, billing, or quota locally.
 - Salesforce HTTP 401/403: check SLAS token expiration, shopper scopes, organization, and site assignment.
+
+## Storefront redesign and catalog v2
+The updated app includes a new visual theme, local category illustrations, natural-language category/budget search, brand filtering, sorting, and page selection. The bundled catalog uses fictional product families and specification-based price tiers. Images are category illustrations, not photographs of actual products. Reviews, discounts, and sales counts are not fabricated.
+
+On first launch of this version, the bundled v2 synthetic catalog replaces older generated `products.jsonl`, `products.csv`, and `manifest.json` files in `data/`, and a separate `catalog-v2.sqlite` index is built. Back up any manual edits to those generated data files before upgrading. Your `.streamlit/secrets.toml` is not modified by this process. When downloading into a new directory, copy your local secrets file privately to that directory; the download contains only the empty example template.

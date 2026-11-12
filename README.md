@@ -4,6 +4,12 @@ An MS final-year project foundation for a US electronics storefront with Salesfo
 
 **Current status:** runnable local Streamlit electronics shop, synthetic catalog, lexical search, optional OpenAI explanations, and a read-only Salesforce B2C connection test. Real Salesforce catalog/cart/order integration, automatic OAuth login, vector retrieval, payment processing, and durable customer accounts are not implemented.
 
+## Storefront preview
+
+![ElectroGuide redesigned storefront](assets/storefront-preview.png)
+
+Warm ivory/forest theme, original device illustrations, product families with specification-based price tiers, category shortcuts, brand filters, price sorting, and pagination. All products remain synthetic. The app upgrades the bundled generated data to catalog v2 on first launch; back up manual catalog edits before updating.
+
 ## Run the Streamlit website (recommended)
 
 [Windows and VS Code setup guide](docs/WINDOWS_STREAMLIT.md)
