@@ -2,6 +2,7 @@
 import json
 import math
 import re
+import sqlite3
 from app.catalog import ALIASES
 from scripts.generate_catalog import CATEGORIES, BRANDS
 
@@ -26,7 +27,7 @@ def parse_intent(question):
         match=re.search(r'\$\s*(\d+(?:\.\d{1,2})?)',text)
     intent={'category':category,'max_price':float(match.group(1)) if match else None,
             'min_ram_gb':None,'min_storage_gb':None,'min_battery_hours':None,
-            'screen_inches':None,'resolution':None,'noise_cancelling':False,
+            'screen_inches':None,'resolution':None,'noise_cancelling':None,'color':None,
             'brand':next((brand for brand in BRANDS if brand.lower() in tokens),None),
             'purpose':None,'unsupported':[]}
     for pattern,key in [(r'(\d+)\s*gb\s*(?:of\s+)?ram','min_ram_gb'),
@@ -44,8 +45,9 @@ def parse_intent(question):
             intent['resolution']=resolution
             break
     if re.search(r'noise[ -]cancell?(?:ing|ation)|\banc\b',text):
-        intent['noise_cancelling']=True
-    for words,purpose in [(['coding','programming','work','study','student'],'productivity'),(['travel','portable','lightweight'],'portable'),(['creative','editing','design'],'creative')]:
+        intent['noise_cancelling']=not bool(re.search(r'(?:without|no)\s+(?:noise[ -]cancell?(?:ing|ation)|anc)',text))
+    intent['color']=next((color for color in ['black','silver','blue','white'] if color in tokens),None)
+    for words,purpose in [(['coding','programming','work','study','studying','student','university'],'productivity'),(['travel','portable','lightweight'],'portable'),(['creative','editing','design'],'creative')]:
         if any(word in tokens for word in words):
             intent['purpose']=purpose
             break
@@ -62,26 +64,26 @@ def merge_intent(question, extracted=None):
     local=parse_intent(question)
     if not isinstance(extracted,dict):
         return local
-    for key in ['category','purpose','resolution','brand']:
+    for key in ['category','purpose','resolution','brand','color']:
         allowed={'category':list(CATEGORIES),'purpose':['productivity','portable','creative'],
-                 'resolution':['4K','8K','1440p','1080p'],'brand':BRANDS}[key]
+                 'resolution':['4K','8K','1440p','1080p'],'brand':BRANDS,'color':['black','silver','blue','white']}[key]
         if local[key] is None and extracted.get(key) in allowed:
             local[key]=extracted[key]
     for key in ['max_price','min_ram_gb','min_storage_gb','min_battery_hours','screen_inches']:
         value=extracted.get(key)
         if local[key] is None and isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value) and 0<=value<=1000000:
             local[key]=float(value)
-    if extracted.get('noise_cancelling') is True:
-        local['noise_cancelling']=True
+    if local['noise_cancelling'] is None and isinstance(extracted.get('noise_cancelling'),bool):
+        local['noise_cancelling']=extracted['noise_cancelling']
     if isinstance(extracted.get('unsupported'),list):
         local['unsupported'].extend(str(x)[:180] for x in extracted['unsupported'][:3] if isinstance(x,str))
     local['unsupported']=list(dict.fromkeys(local['unsupported']))
     return local
 
 
-def recommend(catalog, question, extracted=None):
+def recommend(catalog, question, extracted=None, semantic_index=None, settings=None):
     intent=merge_intent(question,extracted)
-    result={'intent':intent,'products':[],'reasons':{},'notes':intent['unsupported'],'message':''}
+    result={'intent':intent,'products':[],'reasons':{},'notes':intent['unsupported'],'message':'','retrieval_mode':'specification','semantic_status':'not_configured'}
     if not intent['category']:
         result['message']='What kind of device would you like? Try “a laptop for studying under $900”.'
         return result
@@ -106,7 +108,9 @@ def recommend(catalog, question, extracted=None):
             continue
         if intent['resolution'] and specs.get('resolution')!=intent['resolution']:
             continue
-        if intent['noise_cancelling'] and specs.get('noise_cancelling') is not True:
+        if intent['color'] and specs.get('color')!=intent['color']:
+            continue
+        if intent['noise_cancelling'] is not None and specs.get('noise_cancelling') is not intent['noise_cancelling']:
             continue
         candidates.append(product)
     if not candidates:
@@ -127,7 +131,29 @@ def recommend(catalog, question, extracted=None):
         # Normalize price within eligible candidates, so value matters across categories.
         return capability-product['price']/price_scale
     price_scale=max(product['price'] for product in candidates) or 1
-    ranked=sorted(candidates,key=lambda p:(-score(p),p['price'],p['id']))
+    semantic_scores=None
+    if semantic_index is not None and settings and settings.get('OPENAI_API_KEY'):
+        from app.semantic import SemanticUnavailable
+        try:
+            semantic_scores=semantic_index.similarities(candidates,question,settings)
+            result['retrieval_mode']='semantic'
+            result['semantic_status']='ready'
+        except (SemanticUnavailable,sqlite3.Error,OSError,ValueError):
+            result['semantic_status']='unavailable'
+    feature_scores={p['id']:score(p) for p in candidates}
+    low=min(feature_scores.values()); high=max(feature_scores.values())
+    query_terms={term for term in re.findall(r'[a-z0-9]+',question.lower()) if len(term)>2 and term not in {'the','for','with','under','below','need','want','find','recommend','please','that','and','least'}}
+    def final_score(product):
+        if semantic_scores is None:
+            return feature_scores[product['id']]
+        from app.semantic import product_document
+        terms=set(re.findall(r'[a-z0-9]+',product_document(product).lower()))
+        lexical=len(terms&query_terms)/max(1,len(query_terms))
+        feature=(feature_scores[product['id']]-low)/(high-low) if high>low else 0.5
+        # Cosine is a relevance signal, never displayed as an accuracy/confidence percentage.
+        semantic=(semantic_scores[product['id']]+1)/2
+        return 0.70*semantic+0.20*feature+0.10*lexical
+    ranked=sorted(candidates,key=lambda p:(-final_score(p),p['price'],p['id']))
     fingerprints=set()
     diverse=[]
     for product in ranked:
@@ -177,3 +203,30 @@ def retrieve(catalog, question):
 
 def subtotal(cart):
     return round(sum(item['price']*item['quantity'] for item in cart.values()),2)
+
+
+def comparison_rows(result):
+    """Facts and explicit requirements for the selected three; no invented model scores."""
+    products=result['products']
+    if not products:
+        return []
+    intent=result['intent']
+    labels=['Best match','Alternative 1','Alternative 2']
+    rows=[]
+    def add(field,requirement,values):
+        row={'Feature':field,'Your request':requirement}
+        row.update({labels[i]:str(value) for i,value in enumerate(values)})
+        rows.append(row)
+    add('Product','Available catalog product',[p['name'] for p in products])
+    add('Price',f"Up to ${intent['max_price']:,.2f}" if intent['max_price'] is not None else 'No limit specified',[f"${p['price']:,.2f}" for p in products])
+    for field,key,minimum,unit in [('Memory','ram_gb','min_ram_gb','GB'),('Storage','storage_gb','min_storage_gb','GB'),('Listed battery','battery_hours','min_battery_hours','hours'),('Screen size','screen_inches','screen_inches','inches'),('Resolution','resolution','resolution','')]:
+        if any(key in p['specifications'] for p in products):
+            value=intent.get(minimum)
+            needed=(f"{'>= ' if minimum.startswith('min_') else ''}{value:g} {unit}" if isinstance(value,(int,float)) else str(value)) if value is not None else 'No requirement specified'
+            add(field,needed,[f"{p['specifications'][key]} {unit}".strip() if key in p['specifications'] else 'Not listed' for p in products])
+    if any('noise_cancelling' in p['specifications'] for p in products):
+        add('Noise cancellation','Required' if intent['noise_cancelling'] is True else 'Excluded' if intent['noise_cancelling'] is False else 'No requirement specified',['Yes' if p['specifications'].get('noise_cancelling') is True else 'No' if p['specifications'].get('noise_cancelling') is False else 'Not listed' for p in products])
+    if intent['color']:
+        add('Color',intent['color'],[p['specifications'].get('color','Not listed') for p in products])
+    add('Stock','In stock',[str(p['stock'])+' available' for p in products])
+    return rows

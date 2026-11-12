@@ -22,7 +22,7 @@ For F5 launching, select `.venv\Scripts\python.exe` using “Python: Select Inte
 ## Local API settings (owner only)
 If `.streamlit/secrets.toml` does not exist, copy `.streamlit/secrets.toml.example` to that name and edit it in VS Code. It is a plain text, Git-ignored local file, so keep it in a private folder. A populated secrets file takes precedence over environment variables. No `.env` file is loaded.
 
-Use a NEW OpenAI key after revoking any key exposed in chat. Set `OPENAI_MODEL` to a supported model (default `gpt-4o-mini`). Restart Streamlit. The Find my match submission uses OpenAI to extract preferences, then filters/ranks local catalog records and asks OpenAI for a concise explanation. Requests and selected synthetic product records are sent to OpenAI; usage can incur charges. If OpenAI is unavailable, the app uses and labels specification-based matching.
+Use a NEW OpenAI key after revoking any key exposed in chat. Set `OPENAI_MODEL` to a supported model (default `gpt-4o-mini`). Restart Streamlit. For semantic retrieval, first follow [the semantic index setup](SEMANTIC_SEARCH.md). The Find my match submission uses OpenAI to extract preferences and embed the query, filters local catalog records, ranks them against cached product embeddings, and asks OpenAI for a concise explanation. Without a ready index, the finder uses its labeled specification-based fallback. Requests and selected synthetic product records are sent to OpenAI; usage can incur charges. If OpenAI is unavailable, the app uses and labels specification-based matching.
 
 Salesforce settings are `SALESFORCE_SHORT_CODE`, `SALESFORCE_ORGANIZATION_ID`, `SALESFORCE_SITE_ID`, and `SALESFORCE_ACCESS_TOKEN` (a valid SLAS shopper OAuth access token). Never use your Salesforce password. A Lightning Commerce Stores URL alone does not establish B2C SCAPI access. Verify the licensed product and B2C API configuration with your administrator. Tokens currently must be obtained/refreshed outside this app.
 
@@ -41,7 +41,7 @@ The owner diagnostic performs an OpenAI test request and a read-only Salesforce 
 - Session-only bag and clearly labeled demo checkout.
 - No sidebar, compare, wishlist, catalog dashboard, or setup controls.
 
-The catalog is synthetic; “best” means best under the implemented feature/price heuristic among eligible records. It is not a guarantee about real-world performance. Vector retrieval, learned personalization, real customer accounts, durable orders, live Salesforce inventory, and real payments are not implemented.
+The catalog is synthetic; “best” means best under the implemented feature/price heuristic among eligible records. It is not a guarantee about real-world performance. Learned personalization, real customer accounts, durable orders, live Salesforce inventory, and real payments are not implemented. Vector retrieval is available after building the local semantic index with your OpenAI account.
 
 ## Troubleshooting
 - `No module named streamlit`: install requirements with the exact `.venv\Scripts\python.exe` command above. Read the first installation error before trying to launch again.

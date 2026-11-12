@@ -49,4 +49,22 @@ class StreamlitTests(unittest.TestCase):
             self.assertEqual(len(result['products']),3)
             self.assertTrue(all(p['category']=='laptop' and p['price']<=1500 and p['specifications']['ram_gb']>=16 for p in result['products']))
 
+
+    def test_semantic_result_labels_and_comparison(self):
+        intent=Mock(status_code=200)
+        intent.json.return_value={'choices':[{'message':{'content':'{"category":"laptop","max_price":1500,"min_ram_gb":16}'}}]}
+        explanation=Mock(status_code=200)
+        explanation.json.return_value={'choices':[{'message':{'content':'Here are three catalog-grounded matches.'}}]}
+        def similarities(index,products,question,settings):
+            return {product['id']:0.5 for product in products}
+        with patch('app.runtime.settings',return_value={'OPENAI_API_KEY':'fake-unit-test-key'}),patch('app.integrations.requests.post',side_effect=[intent,explanation]),patch('app.semantic.EmbeddingIndex.similarities',new=similarities):
+            app=AppTest.from_file(str(Path(__file__).resolve().parents[1]/'streamlit_app.py'),default_timeout=30).run()
+            app.text_input[0].set_value('laptop under $1500 with 16GB RAM')
+            next(b for b in app.button if b.label=='Find my best match').click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(app.session_state['match']['retrieval_mode'],'semantic')
+            self.assertTrue(any('Semantic matches' in caption.value for caption in app.caption))
+            self.assertEqual(len(app.dataframe),1)
+            self.assertIn('Your request',app.dataframe[0].value.columns)
+
 if __name__=='__main__': unittest.main()

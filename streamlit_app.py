@@ -4,7 +4,8 @@ import uuid
 import streamlit as st
 from app.design import CSS, illustration, LABELS
 from app.runtime import ROOT, prepare_catalog, settings
-from app.shopping import recommend, constraints, subtotal
+from app.semantic import EmbeddingIndex
+from app.shopping import recommend, constraints, subtotal, comparison_rows
 from app.integrations import ConnectionFailure, grounded_answer, extract_preferences
 from scripts.generate_catalog import CATEGORIES
 
@@ -78,12 +79,12 @@ def finder():
                     ai_available=True
                 except ConnectionFailure:
                     pass
-            result=recommend(catalog,request,preferences)
+            result=recommend(catalog,request,preferences,semantic_index=EmbeddingIndex(ROOT/'data/semantic.sqlite'),settings=config)
             if result['products'] and ai_available:
                 try:
                     question=('In at most 70 words, explain the first supplied product as the best catalog match under the given constraints, then briefly distinguish the next two alternatives. '
                               'Keep the supplied order. Describe only listed facts; do not claim verified performance or an exact match for unsupported requirements. '
-                              f'User request: {request}. Unverified requirements: {result["notes"]}')
+                              f'User request: {request}. Unverified requirements: {result["notes"]}. Verified comparison: {comparison_rows(result)}')
                     answer=grounded_answer(config,question,result['products'],'')
                 except ConnectionFailure:
                     ai_available=False
@@ -137,7 +138,7 @@ elif st.session_state.page=='Match':
             st.warning(note)
         products=result['products']
         if products:
-            st.caption('AI-guided picks · Checked against listed specifications' if result['ai'] else 'Based on your budget and requested specifications')
+            st.caption('Semantic matches · Compared with your requirements' if result['retrieval_mode']=='semantic' else 'AI-guided picks · Checked against listed specifications' if result['ai'] else 'Based on your budget and requested specifications')
             if result['explanation']:
                 st.write(result['explanation'])
             columns=st.columns([1.15,1,1])
@@ -147,6 +148,8 @@ elif st.session_state.page=='Match':
                     css='match-label best-label' if index==0 else 'match-label'
                     st.markdown(f'<div class="{css}">{label}</div>',unsafe_allow_html=True)
                     product_card(product,'match',result['reasons'][product['id']])
+            with st.expander('How these match your request'):
+                st.dataframe(comparison_rows(result),hide_index=True,width='stretch')
             st.caption('Matches use the specifications listed here. Any requirements we could not verify are shown above.')
 
 else:

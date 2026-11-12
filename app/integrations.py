@@ -64,7 +64,7 @@ def extract_preferences(settings, question):
     instructions=('Extract explicitly requested shopping requirements as a JSON object. Do not invent minimum specs from a use case. '
         'Keys: category (tv,mobile,laptop,tablet,smartwatch,headphones,camera,monitor,speaker,gaming or null), '
         'max_price, min_ram_gb, min_storage_gb, min_battery_hours, screen_inches (numbers or null), '
-        'resolution (4K,8K,1440p,1080p or null), noise_cancelling (boolean), '
+        'resolution (4K,8K,1440p,1080p or null), noise_cancelling (boolean or null; false only when explicitly excluded), color (black,silver,blue,white or null), '
         'brand (Aster,Novalume,CircuitBay,Voltora,Pinnacle or null), purpose (productivity,portable,creative or null), '
         'unsupported (array of requested requirements outside these fields, including a requested real manufacturer). '
         'Keep unsupported requirements explicit; never claim an exact match. Use null for absent values. '

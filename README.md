@@ -29,16 +29,18 @@ Try: `A laptop for studying under $1500 with at least 16GB RAM`.
 | Component | Current role | Current limitation |
 | --- | --- | --- |
 | Local catalog | Supplies the storefront and all product recommendations | 50,000 fictional SKUs; prices, stock, and specifications are synthetic |
-| OpenAI API key | Server-side calls interpret the submitted request and explain the selected products | Optional; requires a valid locally configured replacement key and billing/model access. Without it, specification-based matching still works and is labeled accordingly |
+| OpenAI API key | Server-side calls interpret requests, embed catalog/query text for semantic retrieval, and explain the selected products | Optional; requires a valid locally configured replacement key and billing/model access. Without it, specification-based matching still works and is labeled accordingly |
 | Salesforce B2C Commerce | Read-only SCAPI product-search diagnostic, run by the owner from the terminal | Not connected to storefront inventory, recommendations, baskets, or orders; no live credentials have been verified |
 
 The app does **not** claim that Salesforce is already powering the shopping flow. The next Salesforce integration step requires the actual B2C Business Manager/API identifiers and a configured shopper OAuth flow, followed by catalog mapping, price/stock validation, and basket integration. A Lightning Commerce Stores URL alone does not verify these capabilities.
 
 ## Matching behavior
 
-Category, budget, in-stock status, and supported requested specifications are hard filters. Supported specifications include minimum RAM, storage and battery hours, exact screen size, resolution, listed noise cancellation, and available fictional brand. Eligible products are ranked by a documented deterministic feature/price heuristic, optionally adjusted for productivity/creative or portable use; near-duplicate brand/specification configurations are suppressed.
+[Enable semantic search and requirements comparison](docs/SEMANTIC_SEARCH.md). Build the local embedding index once with `python -m scripts.build_semantic_index`; embeddings use your OpenAI account. A no-cost `--dry-run` reports the document count.
 
-The LLM can extract requirements but cannot override explicitly parsed budget/spec constraints. Final cards and prices come from actual catalog records. Known unsupported requirements are flagged. If no records qualify, no product is invented and constraints are not silently relaxed. The first card is a **best catalog match under this heuristic**, not a guaranteed best real-world product. Real-brand requests cannot be satisfied by the fictional catalog. Vector retrieval, learned personalization, and a comprehensive natural-language constraint engine remain future work. Generated explanations should be verified against the displayed facts.
+Category, budget, in-stock status, and supported requested specifications are hard filters. Supported specifications include minimum RAM, storage and battery hours, exact screen size, resolution, listed noise cancellation, and available fictional brand. When an embedding index and key are available, eligible products are ranked using OpenAI query/catalog cosine similarity, feature/price signals, and keyword overlap. Otherwise a labeled feature/price fallback is used. Alternatives favor different specifications. A collapsible factual table compares the selected products against the shopper’s requirements.
+
+The LLM can extract requirements but cannot override explicitly parsed budget/spec constraints. Final cards and prices come from actual catalog records. Known unsupported requirements are flagged. If no records qualify, no product is invented and constraints are not silently relaxed. The first card is a **best catalog match under this heuristic**, not a guaranteed best real-world product. Real-brand requests cannot be satisfied by the fictional catalog. Learned personalization and a comprehensive natural-language constraint engine remain future work. Semantic ranking weights are initial experimental settings; live embedding relevance has not been evaluated here. Generated explanations should be verified against the displayed facts.
 
 ## Configure credentials locally
 

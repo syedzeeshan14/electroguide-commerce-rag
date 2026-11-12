@@ -33,9 +33,11 @@ def prepare_catalog():
     return catalog
 
 def settings():
-    names=['OPENAI_API_KEY','OPENAI_MODEL','SALESFORCE_SHORT_CODE','SALESFORCE_ORGANIZATION_ID','SALESFORCE_SITE_ID','SALESFORCE_ACCESS_TOKEN']
+    names=['OPENAI_API_KEY','OPENAI_MODEL','OPENAI_EMBEDDING_MODEL','OPENAI_EMBEDDING_DIMENSIONS','SALESFORCE_SHORT_CODE','SALESFORCE_ORGANIZATION_ID','SALESFORCE_SITE_ID','SALESFORCE_ACCESS_TOKEN']
     values={name:os.environ.get(name,'') for name in names}
     try:
+        if not values['OPENAI_API_KEY'] and st.secrets.get('api_key'):
+            values['OPENAI_API_KEY']=str(st.secrets['api_key'])
         for name in names:
             if st.secrets.get(name):
                 values[name]=str(st.secrets[name])

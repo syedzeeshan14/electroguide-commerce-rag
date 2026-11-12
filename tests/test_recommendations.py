@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock,patch
 from app.catalog import Catalog
-from app.shopping import recommend,merge_intent
+from app.shopping import recommend,merge_intent,parse_intent
 from app.integrations import extract_preferences
 
 class RecommendationTests(unittest.TestCase):
@@ -38,6 +38,12 @@ class RecommendationTests(unittest.TestCase):
         self.assertIn('What kind',recommend(self.catalog,'help me choose')['message'])
         intent=merge_intent('laptop under $900 with 16GB RAM',{'category':'mobile','max_price':5000,'min_ram_gb':4})
         self.assertEqual((intent['category'],intent['max_price'],intent['min_ram_gb']),('laptop',900,16))
+
+    def test_explicit_color_and_noise_exclusion_are_preserved(self):
+        intent=merge_intent('blue headphones without noise cancelling under $200',{'noise_cancelling':True,'color':'black'})
+        self.assertEqual(intent['color'],'blue')
+        self.assertIs(intent['noise_cancelling'],False)
+        self.assertEqual(intent['max_price'],200)
 
     def test_model_output_is_bounded_and_validated(self):
         intent=merge_intent('a device',{'category':'not-a-category','min_ram_gb':float('inf'),'screen_inches':-20})
