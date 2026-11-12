@@ -10,3 +10,4 @@ data/*
 !data/sample-products.jsonl
 *.log
 .DS_Store
+!data/electroguide-catalog-50000.zip

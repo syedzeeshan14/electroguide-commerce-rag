@@ -22,7 +22,9 @@ Then visit:
 Use keyword queries for this baseline. Natural-language intent and budget extraction are planned. The API is a local development server, not a production deployment.
 
 ## Data
-50,000 unique fictional SKUs, 5,000 per category: TV, mobile, laptop, tablet, smartwatch, headphones, camera, monitor, speaker, and gaming console. Prices, stock, brands, and specifications are synthetic; images are absent. This is a controlled experimental dataset, not 50,000 real-world models. Larger generated exports and the SQLite index are ignored by Git; regenerate them with the command above. A small committed sample makes the schema easy to inspect. The generator writes `data/manifest.json` with provenance, count, seed, and JSONL checksum.
+
+[Download the full 50,000-product catalog ZIP](data/electroguide-catalog-50000.zip?raw=true), containing CSV, JSONL, and a provenance/checksum manifest. Extract it into `data/` to skip catalog generation, then build the index as above.
+50,000 unique fictional SKUs, 5,000 per category: TV, mobile, laptop, tablet, smartwatch, headphones, camera, monitor, speaker, and gaming console. Prices, stock, brands, and specifications are synthetic; images are absent. This is a controlled experimental dataset, not 50,000 real-world models. Uncompressed generated exports and the SQLite index are ignored by Git; regenerate them with the command above. A small committed sample makes the schema easy to inspect. The generator writes `data/manifest.json` with provenance, count, seed, and JSONL checksum.
 
 ## Credentials
 No API key is included, needed, or used at this stage. Revoke any key previously posted in chat. Supply a replacement only through secure environment configuration when the server-side LLM integration is ready. `.env.example` documents planned names and contains no values. Milestone 1 does not load a `.env` file. Never expose an LLM key in browser code.
