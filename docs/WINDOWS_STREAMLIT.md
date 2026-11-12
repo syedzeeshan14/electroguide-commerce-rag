@@ -1,3 +1,5 @@
+**Current project path:** use the [store-independent Product2 catalog guide](SALESFORCE_CATALOG.md). No Commerce store or SLAS setup is needed; platform API access is still required.
+
 # Windows and VS Code setup
 
 ## Update into a clean folder

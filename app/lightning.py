@@ -55,7 +55,15 @@ class LightningClient:
         try:
             response=requests.request(method,self.base+path,headers=headers,timeout=30,allow_redirects=False,**kwargs)
             if response.status_code!=200:
-                raise ConnectionFailure(f'Salesforce returned HTTP {response.status_code}. Check OAuth policy, user permissions, store assignment, and token expiration.')
+                error_code=''
+                try:
+                    body=response.json()
+                    candidate=body[0].get('errorCode','') if isinstance(body,list) and body and isinstance(body[0],dict) else ''
+                    if isinstance(candidate,str) and re.fullmatch(r'[A-Z_]{3,80}',candidate):
+                        error_code=' ('+candidate+')'
+                except (ValueError,TypeError):
+                    pass
+                raise ConnectionFailure(f'Salesforce returned HTTP {response.status_code}{error_code}. Check API entitlement, OAuth policy, user permissions, and token expiration.')
             payload=response.json()
             if not isinstance(payload,(dict,list)):
                 raise ValueError('Unexpected JSON')

@@ -36,6 +36,8 @@ bag.button(f'Bag ({count})',width='stretch',on_click=navigate,args=('Bag',))
 st.divider()
 if getattr(catalog,'source','demo')=='lightning_snapshot':
     st.caption('Catalog synced from Salesforce · Availability and checkout are simulated')
+elif getattr(catalog,'source','demo')=='salesforce_catalog_snapshot':
+    st.caption('Salesforce product catalog · USD demo prices, availability and checkout are simulated' if catalog.price_source=='synthetic_usd_metadata' else 'Salesforce product catalog · Selected USD price-book snapshot · Availability and checkout are simulated')
 
 def product_card(product,prefix,reason=None):
     with st.container(border=True):

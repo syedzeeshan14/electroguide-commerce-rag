@@ -1,3 +1,5 @@
+**Current project path:** use the [store-independent Product2 catalog guide](SALESFORCE_CATALOG.md). No Commerce store or SLAS setup is needed; platform API access is still required.
+
 # Legacy B2C Commerce integration prerequisites
 
 **For this project’s confirmed Lightning D2C environment, follow [Lightning import](LIGHTNING_D2C_IMPORT.md) and [OAuth/snapshot setup](LIGHTNING_CONNECTION.md) instead.** The B2C instructions below apply only if a separate B2C Commerce instance is provisioned.

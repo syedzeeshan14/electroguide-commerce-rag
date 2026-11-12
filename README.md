@@ -24,9 +24,15 @@ Three top navigation buttons: **Shop**, **Find my match**, and **Bag**. No sideb
 
 Try: `A laptop for studying under $1500 with at least 16GB RAM`.
 
-## Import into Lightning D2C Commerce
+## Salesforce product-catalog integration (selected path)
 
-[Upload the 100-product sample and connect the project](docs/LIGHTNING_D2C_IMPORT.md). Includes a Commerce-format CSV, five 10k import batches, OAuth read diagnostics, and an optional Salesforce-linked catalog snapshot mode. No live org connection or import has been verified. The snapshot uses selected price-book prices and simulated stock/checkout; it is an owner-operated demo, not public shopper authorization.
+[Start here: Product2 setup, API check, import and sync](docs/SALESFORCE_CATALOG.md).
+
+This path does not require a Commerce store. A standard [100-product CSV](imports/salesforce/product2-100.csv?raw=true), Product2 API access check, owner import command (skip existing codes by default), and read/snapshot connector are included. The existing Streamlit shop and semantic finder can use the synced Product2 catalog. All Salesforce responses have been tested with mocks; API access and a live import in the user's Starter trial remain unverified.
+
+For the observed INR org, USD demo prices are explicitly stored in Description metadata; INR price-book values are never silently relabeled as dollars. Native USD price-book snapshots are an optional separately verified mode. Availability and checkout remain simulated.
+
+The earlier [Lightning D2C Commerce-store guide](docs/LIGHTNING_D2C_IMPORT.md) is retained as an optional future path; it is not required for Product2 integration.
 
 ## Where OpenAI and Salesforce are used
 
@@ -34,10 +40,11 @@ Try: `A laptop for studying under $1500 with at least 16GB RAM`.
 | --- | --- | --- |
 | Local catalog | Supplies the storefront and all product recommendations | 50,000 fictional SKUs; prices, stock, and specifications are synthetic |
 | OpenAI API key | Server-side calls interpret requests, embed catalog/query text for semantic retrieval, and explain the selected products | Optional; requires a valid locally configured replacement key and billing/model access. Without it, specification-based matching still works and is labeled accordingly |
-| Lightning D2C Commerce | Commerce CSV import package, owner OAuth/read connector, optional catalog snapshot used by the shop and finder | Requires local OAuth/store/price-book configuration and a successful sync; no live org verification, real stock, shopper auth or checkout |
+| Salesforce Product2 catalog | Standard product records read through platform OAuth/REST, then synced into the shop and semantic finder | Requires API entitlement and local OAuth configuration; no Commerce store needed. Demo USD pricing/stock by default |
+| Lightning D2C Commerce | Optional legacy store-based import/snapshot connector | Not required by the selected catalog-only project path |
 | Salesforce B2C Commerce | Separate legacy read-only SCAPI diagnostic | Not applicable to the user’s Lightning D2C setup |
 
-The app defaults to its local demo catalog. After importing into Lightning D2C Commerce and completing OAuth/read validation, an owner can explicitly switch to a synced snapshot. B2C Business Manager/SLAS settings do not apply to the Lightning connector. [Connection instructions](docs/LIGHTNING_CONNECTION.md).
+The app defaults to its local demo catalog. After a successful Product2 import and sync, set `CATALOG_SOURCE="salesforce_catalog_snapshot"`. The owner connector preserves Salesforce IDs and supplies the existing recommendations. No public shopper authorization, real inventory, or native Commerce checkout is claimed.
 
 ## Matching behavior
 
