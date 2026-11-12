@@ -1,59 +1,53 @@
-# Run ElectroGuide in VS Code on Windows
+# Windows and VS Code setup
 
-## 1. Update your project
-Download the latest ZIP from GitHub (Code → Download ZIP). Extract it under:
+## Update into a clean folder
+Download the latest GitHub ZIP and extract it under `D:\Downloads-2\Imp Docs\UMASSD\Project-2026`. Open the **inner folder containing `streamlit_app.py` and `requirements.txt`** in VS Code. Avoid opening an outer ZIP folder or running `app/server.py` directly.
 
-`D:\Downloads-2\Imp Docs\UMASSD\Project-2026`
+Keep any existing `.streamlit/secrets.toml` privately, and copy it into the corresponding folder in the new checkout. It is not included in the download and must not be uploaded to GitHub. Back up manual changes to generated `data/products.jsonl`, `products.csv`, and `manifest.json`; older generated catalogs are replaced by the bundled catalog v2 on first launch. The app does not modify your secrets.
 
-Open the folder that actually contains `streamlit_app.py`, `requirements.txt`, and `README.md` in VS Code. A ZIP download usually adds a nested `electroguide-commerce-rag-main` directory. Existing local secrets should be kept separately and copied back to the ignored secrets path after updating; never overwrite them with an example file. Do not upload your completed secrets file to GitHub.
-
-## 2. Install and launch
-Install the Microsoft Python and Python Debugger extensions in VS Code. Open Terminal → New Terminal (PowerShell). No administrator permissions or execution-policy changes are needed:
+## Install and launch
+Install a current Python version (Python 3.12 recommended) and Microsoft's Python/Python Debugger extensions for VS Code. Stop the old Streamlit server with Ctrl+C in its terminal. In the new project's terminal:
 
 ```powershell
+Get-Item requirements.txt, streamlit_app.py
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
 ```
 
-Open **http://localhost:8501**. The first launch extracts the bundled 50,000-product catalog and builds the search index automatically. You do not need to run `app.server`; Streamlit reads the catalog directly. Press Ctrl+C in the terminal to stop.
+Run one command at a time; stop if installation fails and inspect the first actual error. The pip update notice is informational. Visit **http://localhost:8501**. The first run extracts/indexes the included catalog. No separate catalog API server is needed.
 
-In VS Code, run “Python: Select Interpreter” and choose `.venv\Scripts\python.exe`. The included Run and Debug configuration “ElectroGuide: Streamlit” then supports F5 launching.
+For F5 launching, select `.venv\Scripts\python.exe` using “Python: Select Interpreter”, then use “ElectroGuide: Streamlit” in Run and Debug. Do not click Run Python File on `app/server.py`.
 
-## 3. Add local secrets
-In VS Code Explorer enable viewing dot folders if needed. Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`:
+## Local API settings (owner only)
+If `.streamlit/secrets.toml` does not exist, copy `.streamlit/secrets.toml.example` to that name and edit it in VS Code. It is a plain text, Git-ignored local file, so keep it in a private folder. A populated secrets file takes precedence over environment variables. No `.env` file is loaded.
+
+Use a NEW OpenAI key after revoking any key exposed in chat. Set `OPENAI_MODEL` to a supported model (default `gpt-4o-mini`). Restart Streamlit. The Find my match submission uses OpenAI to extract preferences, then filters/ranks local catalog records and asks OpenAI for a concise explanation. Requests and selected synthetic product records are sent to OpenAI; usage can incur charges. If OpenAI is unavailable, the app uses and labels specification-based matching.
+
+Salesforce settings are `SALESFORCE_SHORT_CODE`, `SALESFORCE_ORGANIZATION_ID`, `SALESFORCE_SITE_ID`, and `SALESFORCE_ACCESS_TOKEN` (a valid SLAS shopper OAuth access token). Never use your Salesforce password. A Lightning Commerce Stores URL alone does not establish B2C SCAPI access. Verify the licensed product and B2C API configuration with your administrator. Tokens currently must be obtained/refreshed outside this app.
+
+Test credentials privately in the terminal:
 
 ```powershell
-Copy-Item .streamlit\secrets.toml.example .streamlit\secrets.toml
+.\.venv\Scripts\python.exe -m scripts.check_connections
 ```
 
-Run that copy command only when the destination does not already contain your values. Edit the new file in VS Code. Insert a NEW OpenAI key locally after revoking the key exposed in chat. Do not paste secrets back into chat. The file is ignored by Git and not displayed by the app. It is a plain text local file, so keep it out of public/shared folders and cloud-sync destinations you do not trust. Environment variables with the same names are also supported; a populated secrets file takes precedence.
+The owner diagnostic performs an OpenAI test request and a read-only Salesforce product-search request when configured. It prints connection status without credential values. There is no customer-facing Connections page. **Salesforce currently does not supply the shop or create orders.** Live catalog, price/stock, basket, and checkout integration remains pending valid setup and implementation.
 
-Set `OPENAI_MODEL` to a model available to your account (default `gpt-4o-mini`). Restart Streamlit, open Connections, and click “Test OpenAI connection”. Tests and assistant questions use your account and may incur charges. Questions, the retrieved synthetic products, and demo policies are sent to OpenAI when configured; credentials are sent only to the corresponding provider.
+## What shoppers see
+- Three top buttons: Shop, Find my match, Bag.
+- A search/requirements form, simple catalog filters, and product cards.
+- One best catalog match plus up to two alternatives; unsupported requirements and no-match cases are explicit.
+- Session-only bag and clearly labeled demo checkout.
+- No sidebar, compare, wishlist, catalog dashboard, or setup controls.
 
-## 4. Salesforce B2C connection
-Do not enter your Salesforce username or password. The app needs `SALESFORCE_SHORT_CODE`, `SALESFORCE_ORGANIZATION_ID`, `SALESFORCE_SITE_ID`, and a current `SALESFORCE_ACCESS_TOKEN` obtained through your sandbox's configured SLAS shopper OAuth flow.
-
-A Lightning Commerce Stores URL alone does not establish that these B2C APIs are available. Obtain these identifiers through B2C administration or your Salesforce administrator; if you only have Salesforce-platform Commerce, the integration must be adapted to that product.
-
-The Connections page makes a read-only product-search request and shows a small sanitized result. It does not import products, synchronize your catalog, create baskets, or place Salesforce orders. Tokens expire and must currently be refreshed outside this app. Automated OAuth login/token refresh remains future work.
-
-## 5. What works and what is simulated
-- Shop, specifications, category/budget filters, compare up to four devices, cart, wishlist.
-- Demo orders and read-only catalog dashboard. Browser-session storage only; closing/reloading the session can lose these records.
-- Category/budget retrieval with an optional OpenAI explanation using retrieved product records and policy sources. This is an initial lexical grounding pipeline, not vector retrieval or full personalized recommendation. Review generated explanations against source cards.
-- Read-only external B2C product-search test when valid credentials are configured.
-- No real payments, customer login, durable order storage, live inventory synchronization, or Salesforce order placement.
+The catalog is synthetic; “best” means best under the implemented feature/price heuristic among eligible records. It is not a guarantee about real-world performance. Vector retrieval, learned personalization, real customer accounts, durable orders, live Salesforce inventory, and real payments are not implemented.
 
 ## Troubleshooting
-- `No module named streamlit`: use the exact `.venv\Scripts\python.exe` install and launch commands above.
-- `File does not exist: streamlit_app.py`: the terminal is in the wrong folder. Open the folder containing that file.
-- Port 8501 is occupied: append `--server.port 8502` and open http://localhost:8502.
-- Invalid secrets TOML: put values inside double quotes and avoid stray quotation marks/newlines. Never share a screenshot containing values.
-- OpenAI HTTP 401/429: check the replacement key, model access, billing, or quota locally.
-- Salesforce HTTP 401/403: check SLAS token expiration, shopper scopes, organization, and site assignment.
-
-## Storefront redesign and catalog v2
-The updated app includes a new visual theme, local category illustrations, natural-language category/budget search, brand filtering, sorting, and page selection. The bundled catalog uses fictional product families and specification-based price tiers. Images are category illustrations, not photographs of actual products. Reviews, discounts, and sales counts are not fabricated.
-
-On first launch of this version, the bundled v2 synthetic catalog replaces older generated `products.jsonl`, `products.csv`, and `manifest.json` files in `data/`, and a separate `catalog-v2.sqlite` index is built. Back up any manual edits to those generated data files before upgrading. Your `.streamlit/secrets.toml` is not modified by this process. When downloading into a new directory, copy your local secrets file privately to that directory; the download contains only the empty example template.
+- `No module named streamlit`: install requirements with the exact `.venv\Scripts\python.exe` command above. Read the first installation error before trying to launch again.
+- Missing requirements/app file: open the inner extracted project folder.
+- Port 8501 occupied: stop the older app, or append `--server.port 8502` and visit localhost:8502.
+- Import errors after replacing files: stop the old server and launch a fresh process from the updated folder.
+- OpenAI 401/429: verify key, model access, billing/quota locally.
+- Salesforce 401/403: verify SLAS token expiration, scopes, organization, and site assignment.
+- Never share screenshots containing secret values.

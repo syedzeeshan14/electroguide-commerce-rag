@@ -6,10 +6,10 @@
 Does hybrid retrieval with a grounded conversational assistant improve product relevance and shopping-task completion compared with lexical search on a controlled electronics catalog?
 
 ## Scope
-US English, USD, ten electronics categories, 50,000 fictional SKUs. Target a complete academic demonstration with product search, filters, details, comparisons, cart, simulated checkout, wishlist, customer demo profiles, order tracking, and an administrator dashboard. Clearly identify simulated payments, identities, fulfillment, analytics, and policies. Prefer test payment integration only if time permits. Do not process real money.
+US English, USD, ten electronics categories, 50,000 fictional SKUs. Target a focused customer storefront with product search, filters, details, one best catalog match plus up to two alternatives, a bag, and simulated checkout. Use three top navigation buttons: Shop, Find my match, and Bag. Keep owner diagnostics in a terminal tool. Clearly identify simulated payments, identities, fulfillment, analytics, and policies. Prefer test payment integration only if time permits. Do not process real money.
 
 ## Architecture to implement
-React/TypeScript storefront → Python FastAPI service → PostgreSQL + pgvector for catalog/knowledge retrieval. A server-side provider calls OpenAI for grounded answers and embeddings. A separate Commerce adapter connects Salesforce B2C Commerce SCAPI for supported shopper operations; validate API availability and licensing first. SQLite FTS5 is the implemented offline baseline and is not the final vector system.
+Current implementation: Streamlit storefront → local SQLite catalog → hard filters and deterministic feature/price ranking, with optional server-side OpenAI extraction and grounded explanations. Planned research extension: PostgreSQL + pgvector for hybrid catalog/knowledge retrieval. A server-side provider calls OpenAI for grounded answers and embeddings. A separate Commerce adapter connects Salesforce B2C Commerce SCAPI for supported shopper operations; validate API availability and licensing first. SQLite FTS5 is the implemented offline baseline and is not the final vector system.
 
 Salesforce should own its connected catalog, current commerce price/stock, baskets, and orders. The retrieval index is a derived cache. A local 50k catalog supports load experiments even if the sandbox cannot hold that volume. Initially sync a representative subset after checking limits; never imply all 50k were imported. Refresh commerce facts when presenting recommendations and before basket/checkout actions. Shopper OAuth/SLAS must follow the sandbox's actual configuration; do not assume a Lightning session authorizes SCAPI.
 
@@ -23,10 +23,10 @@ Salesforce should own its connected catalog, current commerce price/stock, baske
 
 ## Milestones and acceptance gates
 1. **Foundation (this repository):** reproducible 50k generator, data provenance, offline search API, meaningful tests, integration checklist.
-2. **Storefront:** responsive catalog, filters, details, comparison, local cart/wishlist, and visibly simulated order flow. Label local persistence and demo identities.
+2. **Storefront:** responsive catalog, filters, details, product finder, local bag, and visibly simulated order flow. Use minimal top navigation and label session-only persistence.
 3. **Salesforce:** verify sandbox type and API access, configure SLAS, sync a small catalog, demonstrate a basket and supported test order flow; document limitations.
 4. **RAG:** embeddings and policy ingestion, grounded explanations with citations, preference-based ranking, cost controls and failure handling.
-5. **Dashboard:** catalog/stock administration through supported APIs, demo order/customer views, separately labeled synthetic analytics.
+5. **Integration quality:** validate fresh commerce price/stock at recommendation and basket time; keep technical diagnostics outside the customer interface.
 6. **Evaluation/report:** reproducible experiments, user study if approved, limitations, architecture diagram, demo script, dissertation and presentation.
 
 ## Evaluation

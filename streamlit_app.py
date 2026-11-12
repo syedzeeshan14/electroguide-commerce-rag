@@ -1,250 +1,178 @@
-from pathlib import Path
-import json
+"""Minimal customer storefront. Owner diagnostics live in scripts/check_connections.py."""
 from html import escape
-import os
-import sqlite3
 import uuid
-import zipfile
 import streamlit as st
-from app.catalog import Catalog
 from app.design import CSS, illustration, LABELS
-from scripts.generate_catalog import CATALOG_VERSION, BRANDS
-from app.shopping import retrieve, subtotal
-from app.integrations import ConnectionFailure, grounded_answer, salesforce_search
+from app.runtime import ROOT, prepare_catalog, settings
+from app.shopping import recommend, constraints, subtotal
+from app.integrations import ConnectionFailure, grounded_answer, extract_preferences
 from scripts.generate_catalog import CATEGORIES
 
-ROOT = Path(__file__).resolve().parent
-st.set_page_config(page_title='ElectroGuide | Thoughtful tech', page_icon='⚡',layout='wide')
+st.set_page_config(page_title='ElectroGuide | Find your fit',page_icon='⚡',layout='wide',initial_sidebar_state='collapsed')
 st.markdown(CSS,unsafe_allow_html=True)
-
-@st.cache_resource
-def prepare_catalog():
-    data=ROOT/'data'
-    source=data/'products.jsonl'
-    database=data/f'catalog-v{CATALOG_VERSION}.sqlite'
-    manifest_path=data/'manifest.json'
-    try:
-        local_version=json.loads(manifest_path.read_text()).get('catalog_version',1)
-    except (FileNotFoundError,ValueError):
-        local_version=0
-    if not source.exists() or local_version<CATALOG_VERSION:
-        with zipfile.ZipFile(data/'electroguide-catalog-50000.zip') as archive:
-            # Extract only the known data members, never arbitrary paths.
-            for name in ('products.jsonl','products.csv','manifest.json'):
-                (data/name).write_bytes(archive.read(name))
-    catalog=Catalog(str(database))
-    try:
-        count=catalog.connection.execute('SELECT count(*) FROM products').fetchone()[0]
-        if count == 0:
-            catalog.build(source)
-    except sqlite3.OperationalError:
-        catalog.build(source)
-    return catalog
-
-def settings():
-    names=['OPENAI_API_KEY','OPENAI_MODEL','SALESFORCE_SHORT_CODE','SALESFORCE_ORGANIZATION_ID','SALESFORCE_SITE_ID','SALESFORCE_ACCESS_TOKEN']
-    values={name:os.environ.get(name,'') for name in names}
-    try:
-        for name in names:
-            if st.secrets.get(name):
-                values[name]=str(st.secrets[name])
-    except FileNotFoundError:
-        pass
-    return values
-
+st.markdown('''<style>
+[data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"] {display:none}
+[data-testid="stToolbar"]{visibility:hidden}
+.block-container{max-width:1260px}
+.nav-logo{padding:3px 0 22px}.match-label{font-size:11px;letter-spacing:1.5px;font-weight:800;text-transform:uppercase;color:#55735c;margin-bottom:12px}.best-label{background:#1b503d;color:#fff;padding:9px 14px;border-radius:9px;display:inline-block}.match-reason{font-size:13px;line-height:1.7;color:#45644e;margin:0 0 15px}.finder-intro{font-size:15px;color:#5c7161;line-height:1.7;max-width:720px}.match-question{padding:12px 18px;border-left:3px solid #6a8f68;background:#eef3e8;border-radius:0 10px 10px 0;font-size:14px;margin:15px 0}.hero{min-height:280px}.hero h1{font-size:48px}.product-name{min-height:54px}.footer{margin-top:30px}.stForm{border-radius:18px}
+@media(max-width:760px){.hero h1{font-size:34px}.nav-logo{padding-bottom:0}.hero{min-height:240px}}
+</style>''',unsafe_allow_html=True)
 catalog=prepare_catalog()
 config=settings()
-for key,default in {'cart':{},'wishlist':{},'compare':{},'orders':[],'messages':[]}.items():
+for key,default in {'page':'Shop','cart':{},'orders':[],'match':None,'shop_page':0}.items():
     if key not in st.session_state:
         st.session_state[key]=default
 
-st.markdown('<div class="topline"><div class="brand">electro<span>guide.</span></div><div class="topnote">Thoughtful tech. A little more you. &nbsp; / &nbsp; US · USD</div></div>',unsafe_allow_html=True)
-st.sidebar.markdown('<div class="brand">eg<span>.</span></div><div class="eyebrow">Your tech, discovered</div>',unsafe_allow_html=True)
-page=st.sidebar.radio('Explore',['Shop','Shopping assistant','Compare','Wishlist','Cart & orders','Catalog dashboard','Connections'])
-st.sidebar.divider()
-st.sidebar.metric('Your bag',sum(p['quantity'] for p in st.session_state.cart.values()))
-st.sidebar.caption(f"{len(st.session_state.wishlist)} saved · {len(st.session_state.compare)} to compare")
-st.sidebar.caption('Academic demo · Fictional products · Simulated checkout')
+def navigate(page):
+    st.session_state.page=page
 
-def product_card(product, prefix):
+logo,shop,match,bag=st.columns([3,1,1.4,1.2],vertical_alignment='center')
+logo.markdown('<div class="brand nav-logo">electro<span>guide.</span></div>',unsafe_allow_html=True)
+shop.button('Shop',width='stretch',on_click=navigate,args=('Shop',))
+match.button('Find my match',width='stretch',on_click=navigate,args=('Match',))
+count=sum(p['quantity'] for p in st.session_state.cart.values())
+bag.button(f'Bag ({count})',width='stretch',on_click=navigate,args=('Bag',))
+st.divider()
+
+def product_card(product,prefix,reason=None):
     with st.container(border=True):
         st.markdown('<div class="product-art">'+illustration(product['category'])+'</div>',unsafe_allow_html=True)
         specs=product['specifications']
         highlights=[]
         for key,label in [('ram_gb','GB RAM'),('storage_gb','GB storage'),('screen_inches','″ display'),('resolution',''),('battery_hours','h battery'),('megapixels','MP'),('case_mm','mm'),('power_watts','W')]:
             if key in specs:
-                highlights.append(f"{specs[key]}{label}")
+                highlights.append(f'{specs[key]}{label}')
         summary=' · '.join(highlights[:3]) or specs.get('form_factor',specs.get('color',''))
-        st.markdown(f'<div class="category-label">{escape(LABELS[product["category"]])} / {escape(product["brand"])}</div><div class="product-name">{escape(product["name"])}</div><div class="spec-line">{escape(summary)}</div><div class="price-row"><span class="price">${product["price"]:,.2f}</span><span class="stock-pill">In stock · demo</span></div>',unsafe_allow_html=True)
-        with st.expander('Explore details'):
-            st.caption(f"{product['id']} · {product['sku']} · Synthetic product")
+        st.markdown(f'<div class="category-label">{escape(LABELS[product["category"]])}</div><div class="product-name">{escape(product["name"])}</div><div class="spec-line">{escape(summary)}</div><div class="price-row"><span class="price">${product["price"]:,.2f}</span><span class="stock-pill">Available</span></div>',unsafe_allow_html=True)
+        if reason:
+            st.markdown(f'<div class="match-reason">{escape(reason)}</div>',unsafe_allow_html=True)
+        with st.expander('Product details'):
             for key,value in specs.items():
                 st.write(f"**{key.replace('_',' ').title()}:** {value}")
-            st.caption('Category illustration; not a photograph of this fictional model.')
-        if st.button('Add to cart',width='stretch',type='primary',key=f"{prefix}-cart-{product['id']}",disabled=product['stock']<=0):
+            st.caption(f"{product['id']} · Representative illustration")
+        if st.button('Add to bag',type='primary',width='stretch',key=f"{prefix}-{product['id']}"):
             existing=st.session_state.cart.get(product['id'])
             quantity=existing['quantity']+1 if existing else 1
             if quantity<=product['stock']:
                 st.session_state.cart[product['id']]={**product,'quantity':quantity}
                 st.rerun()
             else:
-                st.warning('Demo stock limit reached.')
-        b,c=st.columns(2)
-        if b.button('Save',width='stretch',key=f"{prefix}-save-{product['id']}"):
-            st.session_state.wishlist[product['id']]=product
-            st.rerun()
-        if c.button('Compare',width='stretch',key=f"{prefix}-compare-{product['id']}"):
-            if len(st.session_state.compare)<4 or product['id'] in st.session_state.compare:
-                st.session_state.compare[product['id']]=product
-                st.rerun()
-            else:
-                st.warning('Compare up to four products. Clear the comparison to start again.')
+                st.warning('Available quantity reached.')
 
-if page=='Shop':
-    st.markdown('<div class="hero"><div><div class="eyebrow">Good technology. Great possibilities.</div><h1>Find your next<br>everyday upgrade.</h1><p>From a better workday to a bigger movie night. Discover devices that fit your world, your needs, and your budget.</p><span class="hero-tag">Explore 10 categories &nbsp; ↗</span></div><div class="hero-art">'+illustration('laptop','#c4e8a5')+'</div></div>',unsafe_allow_html=True)
-    category_columns=st.columns(5)
-    for index,key in enumerate(['laptop','mobile','headphones','tv','smartwatch']):
-        if category_columns[index].button(LABELS[key],key='category-'+key,width='stretch'):
-            st.session_state['shop_category']=key
-    st.markdown('<div class="section-heading"><div class="section-title">A good place to start</div><span>Find something that feels like you</span></div>',unsafe_allow_html=True)
-    a,b,c,d=st.columns([2.3,1.2,1.1,1.2])
-    query=a.text_input('Find a device',placeholder='Try laptops under $900, or 4K TV')
-    category=b.selectbox('Category',['All',*CATEGORIES],format_func=lambda x: LABELS.get(x,x),key='shop_category')
-    budget=c.number_input('Budget (USD)',min_value=0.0,value=3500.0,step=50.0)
-    sort_label=d.selectbox('Sort by',['Featured','Price: low to high','Price: high to low'])
-    from app.shopping import constraints
+def finder():
+    with st.form('product-finder'):
+        st.markdown('**What would make a good fit for you?**')
+        request=st.text_input('What are you looking for?',placeholder='A laptop for studying under $1500, with at least 16GB RAM',label_visibility='collapsed',max_chars=2000)
+        submitted=st.form_submit_button('Find my best match',type='primary')
+    if submitted:
+        if not request.strip():
+            st.warning('Tell us what kind of device you need and your budget.')
+            return
+        preferences=None
+        ai_available=False
+        answer=''
+        with st.spinner('Finding your fit…'):
+            if config['OPENAI_API_KEY']:
+                try:
+                    preferences=extract_preferences(config,request)
+                    ai_available=True
+                except ConnectionFailure:
+                    pass
+            result=recommend(catalog,request,preferences)
+            if result['products'] and ai_available:
+                try:
+                    question=('In at most 70 words, explain the first supplied product as the best catalog match under the given constraints, then briefly distinguish the next two alternatives. '
+                              'Keep the supplied order. Describe only listed facts; do not claim verified performance or an exact match for unsupported requirements. '
+                              f'User request: {request}. Unverified requirements: {result["notes"]}')
+                    answer=grounded_answer(config,question,result['products'],'')
+                except ConnectionFailure:
+                    ai_available=False
+        st.session_state.match={**result,'request':request,'explanation':answer,'ai':ai_available}
+        st.session_state.page='Match'
+        st.rerun()
+
+if st.session_state.page=='Shop':
+    st.markdown('<div class="hero"><div><div class="eyebrow">Less searching. More finding.</div><h1>Good tech.<br>The right fit for you.</h1><p>Tell us what matters. We’ll narrow the catalog to one best match and two thoughtful alternatives.</p></div><div class="hero-art">'+illustration('laptop','#c4e8a5')+'</div></div>',unsafe_allow_html=True)
+    finder()
+    st.markdown('<div class="section-heading"><div class="section-title">Explore the collection</div><span>A little inspiration to get started</span></div>',unsafe_allow_html=True)
+    a,b,c=st.columns([2,1,1])
+    query=a.text_input('Search products',placeholder='Search laptops, headphones, 4K…')
+    category=b.selectbox('Category',['All',*CATEGORIES],format_func=lambda x:LABELS.get(x,x))
+    budget=c.number_input('Up to (USD)',min_value=0.0,value=3500.0,step=50.0)
     parsed_category,parsed_budget=constraints(query)
-    active_category=None if category=='All' else category
-    if parsed_category and active_category is None:
-        active_category=parsed_category
+    active_category=parsed_category if category=='All' else category
     active_budget=min(budget,parsed_budget) if parsed_budget is not None else budget
-    # Natural-language category/budget queries use explicit filters; keyword queries use FTS.
     keywords='' if parsed_category and parsed_budget is not None else query
-    if active_category and query.lower().strip() in (active_category,LABELS.get(active_category,'').lower()):
-        keywords=''
-    extra1,extra2=st.columns([1,3])
-    brand=extra1.selectbox('Brand',['All brands',*BRANDS])
-    page_number=extra2.number_input('Page',min_value=1,value=1,step=1)
-    sort={'Featured':'featured','Price: low to high':'price_low','Price: high to low':'price_high'}[sort_label]
-    products=catalog.search(query=keywords,category=active_category,max_price=active_budget,limit=12,sort=sort,offset=(page_number-1)*12,brand=None if brand=='All brands' else brand)
-    st.caption(f"{len(products)} picks · Page {page_number} · Up to ${active_budget:,.0f}" + (' · '+LABELS[active_category] if active_category else ' · All categories'))
+    fingerprint=(query,category,budget)
+    if st.session_state.get('shop_filters')!=fingerprint:
+        st.session_state.shop_page=0
+        st.session_state.shop_filters=fingerprint
+    products=catalog.search(query=keywords,category=active_category,max_price=active_budget,limit=9,sort='featured',offset=st.session_state.shop_page*9)
     if not products:
-        st.markdown('<div class="empty"><h3>No matches this time.</h3><p>Try a broader search, a higher budget, or page 1.</p></div>',unsafe_allow_html=True)
+        st.info('No products match. Try a broader search or a higher budget.')
     columns=st.columns(3)
     for index,product in enumerate(products):
         with columns[index%3]:
             product_card(product,'shop')
-
-elif page=='Shopping assistant':
-    st.markdown('<div class="assistant-banner"><div class="eyebrow">A little guidance goes a long way</div><h2>Let’s find your kind of tech.</h2><p>Tell us what you’re looking for and what you’d like to spend.</p></div>',unsafe_allow_html=True)
-    st.caption('Try “Recommend a laptop under $900”. Category and budget filtering are supported; use-case ranking and vector search are future work.')
-    for index,message in enumerate(st.session_state.messages):
-        with st.chat_message(message['role']):
-            st.write(message['content'])
-            for product in message.get('products',[]):
-                product_card(product,f'message-{index}')
-    question=st.chat_input('What are you shopping for?')
-    if question:
-        st.session_state.messages.append({'role':'user','content':question})
-        products=retrieve(catalog,question)
-        policy=(ROOT/'knowledge/store-policies.md').read_text(encoding='utf-8')
-        with st.chat_message('user'):
-            st.write(question)
-        with st.chat_message('assistant'):
-            if config['OPENAI_API_KEY']:
-                try:
-                    with st.spinner('Reading matching products and demo policies…'):
-                        answer=grounded_answer(config,question,products,policy)
-                    st.caption('AI-generated explanation; verify details against the source cards below.')
-                except ConnectionFailure as error:
-                    st.warning(str(error))
-                    answer='The AI service is unavailable. You can still review the local matching products below.'
-            elif products:
-                answer='Here are in-stock demo options matching the category and budget I could identify. Compare their listed specifications below. Enable OpenAI in Connections for a conversational explanation.'
-            else:
-                answer='Please name an electronics category and budget, such as “laptop under $900”. For store policies, see the demo policy document below.'
-            st.write(answer)
-            for product in products:
-                product_card(product,f'message-{len(st.session_state.messages)}')
-        st.session_state.messages.append({'role':'assistant','content':answer,'products':products})
-    with st.expander('Source: demo store policies'):
-        st.markdown((ROOT/'knowledge/store-policies.md').read_text(encoding='utf-8'))
-
-elif page=='Compare':
-    st.header('Compare devices')
-    if st.session_state.compare:
-        rows=[{'Product':p['name'],'ID':p['id'],'Price (USD)':p['price'],**p['specifications']} for p in st.session_state.compare.values()]
-        st.dataframe(rows,width='stretch')
-        if st.button('Clear comparison'):
-            st.session_state.compare={}
-            st.rerun()
-    else:
-        st.write('Choose Compare on up to four product cards.')
-
-elif page=='Wishlist':
-    st.header('Your saved devices')
-    for product in list(st.session_state.wishlist.values()):
-        product_card(product,'wishlist')
-        if st.button('Remove saved item',key='remove-'+product['id']):
-            del st.session_state.wishlist[product['id']]
-            st.rerun()
-    if not st.session_state.wishlist:
-        st.write('Save products from the shop to see them here.')
-
-elif page=='Cart & orders':
-    st.header('Cart & demo orders')
-    for key,product in list(st.session_state.cart.items()):
-        a,b,c=st.columns([4,1,1])
-        a.write(f"{product['name']} — ${product['price']:,.2f} each")
-        quantity=b.number_input('Quantity',min_value=1,max_value=product['stock'],value=product['quantity'],key='qty-'+key)
-        st.session_state.cart[key]['quantity']=quantity
-        if c.button('Remove',key='cart-remove-'+key):
-            del st.session_state.cart[key]
-            st.rerun()
-    total=subtotal(st.session_state.cart)
-    st.metric('Subtotal',f'${total:,.2f}')
-    st.caption('Tax and shipping are not calculated. No payment or Salesforce order will be created.')
-    if st.button('Place simulated order',disabled=not st.session_state.cart):
-        order={'id':'DEMO-'+uuid.uuid4().hex[:8].upper(),'status':'Simulated order placed','subtotal':total,'items':list(st.session_state.cart.values())}
-        st.session_state.orders.append(order)
-        st.session_state.cart={}
+    previous,number,next_page=st.columns([1,3,1])
+    if previous.button('Previous',disabled=st.session_state.shop_page==0,width='stretch'):
+        st.session_state.shop_page-=1
         st.rerun()
-    for order in reversed(st.session_state.orders):
-        with st.expander(f"{order['id']} · {order['status']} · ${order['subtotal']:,.2f}"):
-            st.json(order)
+    number.caption(f'Page {st.session_state.shop_page+1}')
+    if next_page.button('Next',disabled=len(products)<9,width='stretch'):
+        st.session_state.shop_page+=1
+        st.rerun()
 
-elif page=='Catalog dashboard':
-    st.header('Catalog overview')
-    rows=catalog.connection.execute('SELECT category,COUNT(*) AS products,SUM(stock) AS units,ROUND(AVG(price),2) AS average_price FROM products GROUP BY category').fetchall()
-    st.metric('Synthetic products',sum(row['products'] for row in rows))
-    st.dataframe([dict(row) for row in rows],width='stretch')
-    st.bar_chart({row['category']:row['products'] for row in rows})
-    st.caption('Read-only local dashboard. Customer administration, real sales analytics, and Salesforce catalog writes are not connected.')
+elif st.session_state.page=='Match':
+    st.markdown('<div class="eyebrow">Made a little more personal</div>',unsafe_allow_html=True)
+    st.header('Your next device, narrowed down.')
+    st.markdown('<p class="finder-intro">Share your budget and the specifications that matter. Get one best match and up to two alternatives from the available catalog.</p>',unsafe_allow_html=True)
+    finder()
+    result=st.session_state.match
+    if result:
+        st.markdown(f'<div class="match-question">{escape(result["request"])}</div>',unsafe_allow_html=True)
+        if result['message']:
+            st.info(result['message'])
+        for note in result['notes']:
+            st.warning(note)
+        products=result['products']
+        if products:
+            st.caption('AI-guided picks · Checked against listed specifications' if result['ai'] else 'Based on your budget and requested specifications')
+            if result['explanation']:
+                st.write(result['explanation'])
+            columns=st.columns([1.15,1,1])
+            for index,product in enumerate(products):
+                with columns[index]:
+                    label=['Your best match','Another good option','One more to consider'][index]
+                    css='match-label best-label' if index==0 else 'match-label'
+                    st.markdown(f'<div class="{css}">{label}</div>',unsafe_allow_html=True)
+                    product_card(product,'match',result['reasons'][product['id']])
+            st.caption('Matches use the specifications listed here. Any requirements we could not verify are shown above.')
 
 else:
-    st.header('Local connections')
-    st.write('Store your values in `.streamlit/secrets.toml` on your computer, then restart Streamlit. Values are never displayed here.')
-    st.write('OpenAI key:', 'Configured locally' if config['OPENAI_API_KEY'] else 'Not configured')
-    st.write('Salesforce identifiers and token:', 'Configured locally' if all(config[k] for k in ['SALESFORCE_SHORT_CODE','SALESFORCE_ORGANIZATION_ID','SALESFORCE_SITE_ID','SALESFORCE_ACCESS_TOKEN']) else 'Incomplete')
-    st.caption('Configured does not mean verified. Test buttons make explicit external API requests. OpenAI requests incur provider charges.')
-    if st.button('Test OpenAI connection'):
-        try:
-            with st.spinner('Testing OpenAI…'):
-                grounded_answer(config,'Reply with a short greeting. Do not recommend products.',[], '')
-            st.success('OpenAI responded successfully.')
-        except ConnectionFailure as error:
-            st.error(str(error))
-    term=st.text_input('Salesforce test search',value='laptop')
-    if st.button('Test Salesforce product search'):
-        try:
-            with st.spinner('Testing B2C Commerce SCAPI…'):
-                result=salesforce_search(config,term)
-            st.success('Salesforce product search responded successfully.')
-            hits=result.get('hits',[])
-            st.write([{'id':p.get('productId'),'name':p.get('productName'),'price':p.get('price')} for p in hits])
-            st.caption('Read-only connection test. The storefront still uses the synthetic local catalog.')
-        except ConnectionFailure as error:
-            st.error(str(error))
-    st.warning('A Lightning username/password is not a B2C SCAPI credential. Obtain the actual B2C identifiers and a SLAS shopper token; never enter your Salesforce password here.')
+    st.header('Your shopping bag')
+    if not st.session_state.cart:
+        st.write('Something good belongs here. Explore the collection or find your match.')
+    for key,product in list(st.session_state.cart.items()):
+        with st.container(border=True):
+            a,b,c=st.columns([4,1.3,1])
+            a.write(f"**{product['name']}**")
+            a.caption(f"${product['price']:,.2f} each")
+            quantity=b.number_input('Quantity',min_value=1,max_value=product['stock'],value=product['quantity'],key='qty-'+key)
+            st.session_state.cart[key]['quantity']=quantity
+            if c.button('Remove',key='remove-'+key):
+                del st.session_state.cart[key]
+                st.rerun()
+    total=subtotal(st.session_state.cart)
+    if st.session_state.cart:
+        st.metric('Subtotal',f'${total:,.2f}')
+        st.caption('Demo checkout. Tax and shipping are excluded. No payment is collected.')
+        if st.button('Complete demo order',type='primary'):
+            st.session_state.orders.append({'id':'EG-'+uuid.uuid4().hex[:8].upper(),'subtotal':total})
+            st.session_state.cart={}
+            st.rerun()
+    if st.session_state.orders:
+        order=st.session_state.orders[-1]
+        st.success(f"Demo order {order['id']} confirmed · ${order['subtotal']:,.2f}")
 
-st.markdown('<div class="footer"><strong>electroguide.</strong> &nbsp; Thoughtful tech, made personal.<br>University research prototype · All brands, products, prices, and availability are synthetic. Original category illustrations are representative. No real payments. Session-only cart and orders.</div>',unsafe_allow_html=True)
+st.markdown('<div class="footer"><strong>electroguide.</strong> &nbsp; Find your fit.<br>Demo storefront · Synthetic products and representative illustrations · No real payments</div>',unsafe_allow_html=True)

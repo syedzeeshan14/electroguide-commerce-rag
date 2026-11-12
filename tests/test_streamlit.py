@@ -1,31 +1,52 @@
-"""Exercise user flows through Streamlit's application test runner, offline."""
+"""Test the minimal customer journey offline using Streamlit's runner."""
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 from streamlit.testing.v1 import AppTest
 
 class StreamlitTests(unittest.TestCase):
-    def test_shop_cart_order_and_pages(self):
+    def test_minimal_navigation_finder_and_order(self):
         app=AppTest.from_file(str(Path(__file__).resolve().parents[1]/'streamlit_app.py'),default_timeout=30).run()
         self.assertFalse(app.exception)
-        next(b for b in app.button if b.label=='Add to cart').click().run()
+        self.assertFalse(app.sidebar.radio)
+        labels=[button.label for button in app.button]
+        for removed in ['Compare','Wishlist','Connections','Catalog dashboard','Shopping assistant']:
+            self.assertNotIn(removed,labels)
+        next(b for b in app.button if b.label=='Add to bag').click().run()
         self.assertTrue(app.session_state['cart'])
-        app.sidebar.radio[0].set_value('Cart & orders').run()
-        next(b for b in app.button if b.label=='Place simulated order').click().run()
+        next(b for b in app.button if b.label.startswith('Bag (')).click().run()
+        next(b for b in app.button if b.label=='Complete demo order').click().run()
         self.assertTrue(app.session_state['orders'])
         self.assertFalse(app.session_state['cart'])
-        for page in ['Compare','Wishlist','Catalog dashboard','Connections','Shopping assistant']:
-            app.sidebar.radio[0].set_value(page).run()
-            self.assertFalse(app.exception,page)
-        with patch('app.integrations.requests.post',side_effect=AssertionError('Unexpected external request')):
-            # No external provider calls are needed: use the offline branch.
-            with patch.dict('os.environ',{'OPENAI_API_KEY':''}):
-                app.chat_input[0].set_value('laptop under $900').run()
+        next(b for b in app.button if b.label=='Find my match').click().run()
+        with patch('app.integrations.requests.post',side_effect=AssertionError('Unexpected external request')),patch.dict('os.environ',{'OPENAI_API_KEY':''}):
+            app.text_input[0].set_value('laptop under $1500 with 16GB RAM')
+            next(b for b in app.button if b.label=='Find my best match').click().run()
         self.assertFalse(app.exception)
-        self.assertTrue(app.session_state['messages'][-1]['products'])
-        self.assertTrue(all(p['price']<=900 for p in app.session_state['messages'][-1]['products']))
-        next(b for b in app.button if b.label=='Add to cart').click().run()
+        products=app.session_state['match']['products']
+        self.assertEqual(len(products),3)
+        self.assertTrue(all(p['price']<=1500 and p['specifications']['ram_gb']>=16 for p in products))
+        next(b for b in app.button if b.label=='Add to bag').click().run()
+        self.assertFalse(app.exception)
         self.assertTrue(app.session_state['cart'])
-        self.assertFalse(app.exception)
+        self.assertEqual(len(app.session_state['match']['products']),3)
+
+
+    def test_configured_key_powers_request_interpretation_and_explanation(self):
+        intent=Mock(status_code=200)
+        intent.json.return_value={'choices':[{'message':{'content':'{"category":"mobile","max_price":5000,"min_ram_gb":4}'}}]}
+        explanation=Mock(status_code=200)
+        explanation.json.return_value={'choices':[{'message':{'content':'These options match the listed budget and RAM requirements.'}}]}
+        with patch('app.runtime.settings',return_value={'OPENAI_API_KEY':'fake-unit-test-key','OPENAI_MODEL':'test-model'}),patch('app.integrations.requests.post',side_effect=[intent,explanation]) as post:
+            app=AppTest.from_file(str(Path(__file__).resolve().parents[1]/'streamlit_app.py'),default_timeout=30).run()
+            app.text_input[0].set_value('laptop under $1500 with 16GB RAM')
+            next(b for b in app.button if b.label=='Find my best match').click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(post.call_count,2)
+            result=app.session_state['match']
+            self.assertTrue(result['ai'])
+            self.assertTrue(result['explanation'])
+            self.assertEqual(len(result['products']),3)
+            self.assertTrue(all(p['category']=='laptop' and p['price']<=1500 and p['specifications']['ram_gb']>=16 for p in result['products']))
 
 if __name__=='__main__': unittest.main()

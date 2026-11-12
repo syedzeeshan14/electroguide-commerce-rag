@@ -1,18 +1,14 @@
-# ElectroGuide Commerce + RAG
+# ElectroGuide
 
-An MS final-year project foundation for a US electronics storefront with Salesforce B2C Commerce integration and grounded shopping recommendations.
+A minimal electronics storefront for an MS project: browse products, describe what you need, and see **one best catalog match plus up to two alternatives**.
 
-**Current status:** runnable local Streamlit electronics shop, synthetic catalog, lexical search, optional OpenAI explanations, and a read-only Salesforce B2C connection test. Real Salesforce catalog/cart/order integration, automatic OAuth login, vector retrieval, payment processing, and durable customer accounts are not implemented.
+![Storefront](assets/storefront-preview.png)
 
-## Storefront preview
+![Three recommendations](assets/matches-preview.png)
 
-![ElectroGuide redesigned storefront](assets/storefront-preview.png)
+## Run on Windows / VS Code
 
-Warm ivory/forest theme, original device illustrations, product families with specification-based price tiers, category shortcuts, brand filters, price sorting, and pagination. All products remain synthetic. The app upgrades the bundled generated data to catalog v2 on first launch; back up manual catalog edits before updating.
-
-## Run the Streamlit website (recommended)
-
-[Windows and VS Code setup guide](docs/WINDOWS_STREAMLIT.md)
+Open the folder containing `streamlit_app.py` in VS Code, then run these commands one at a time:
 
 ```powershell
 py -m venv .venv
@@ -20,36 +16,52 @@ py -m venv .venv
 .\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
 ```
 
-Visit http://localhost:8501. The bundled catalog is extracted and indexed automatically. No credentials are needed for local shopping. To enable external calls, copy `.streamlit/secrets.toml.example` to the ignored `.streamlit/secrets.toml`, enter values locally, and use Connections to test. Never paste secrets into chat or commit them.
+Open http://localhost:8501. Stop an older running server with Ctrl+C before starting the new version. [Full Windows guide](docs/WINDOWS_STREAMLIT.md).
 
-## Run the standalone catalog API (optional)
-Requires Python 3.10+ with SQLite FTS5; no third-party dependencies or API key needed.
+## Customer experience
 
-```bash
-python scripts/generate_catalog.py --count 50000 --seed 42
-python -m scripts.build_index
-python -m unittest discover -s tests -v
-python -m app.server
+Three top navigation buttons: **Shop**, **Find my match**, and **Bag**. No sidebar, compare, wishlist, dashboard, or connection settings in the customer interface. The shop has a short discovery form and a searchable, paginated collection. The finder returns at most three distinct catalog configurations, with factual specification/price reasons; the bag supports a clearly labeled simulated checkout. State is session-only.
+
+Try: `A laptop for studying under $1500 with at least 16GB RAM`.
+
+## Where OpenAI and Salesforce are used
+
+| Component | Current role | Current limitation |
+| --- | --- | --- |
+| Local catalog | Supplies the storefront and all product recommendations | 50,000 fictional SKUs; prices, stock, and specifications are synthetic |
+| OpenAI API key | Server-side calls interpret the submitted request and explain the selected products | Optional; requires a valid locally configured replacement key and billing/model access. Without it, specification-based matching still works and is labeled accordingly |
+| Salesforce B2C Commerce | Read-only SCAPI product-search diagnostic, run by the owner from the terminal | Not connected to storefront inventory, recommendations, baskets, or orders; no live credentials have been verified |
+
+The app does **not** claim that Salesforce is already powering the shopping flow. The next Salesforce integration step requires the actual B2C Business Manager/API identifiers and a configured shopper OAuth flow, followed by catalog mapping, price/stock validation, and basket integration. A Lightning Commerce Stores URL alone does not verify these capabilities.
+
+## Matching behavior
+
+Category, budget, in-stock status, and supported requested specifications are hard filters. Supported specifications include minimum RAM, storage and battery hours, exact screen size, resolution, listed noise cancellation, and available fictional brand. Eligible products are ranked by a documented deterministic feature/price heuristic, optionally adjusted for productivity/creative or portable use; near-duplicate brand/specification configurations are suppressed.
+
+The LLM can extract requirements but cannot override explicitly parsed budget/spec constraints. Final cards and prices come from actual catalog records. Known unsupported requirements are flagged. If no records qualify, no product is invented and constraints are not silently relaxed. The first card is a **best catalog match under this heuristic**, not a guaranteed best real-world product. Real-brand requests cannot be satisfied by the fictional catalog. Vector retrieval, learned personalization, and a comprehensive natural-language constraint engine remain future work. Generated explanations should be verified against the displayed facts.
+
+## Configure credentials locally
+
+Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` only if your local file does not already exist. Enter a replacement OpenAI key there privately; revoke any key previously posted in chat. Never commit or share the completed file. Environment variables with the same names are also supported. No `.env` file is automatically loaded.
+
+Owner diagnostics have moved out of the storefront:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.check_connections
 ```
 
-Then visit:
-- `http://127.0.0.1:8000/health`
-- `http://127.0.0.1:8000/products?q=laptop&max_price=900&limit=5`
-- `http://127.0.0.1:8000/products?category=tv&max_price=1000`
+This explicitly calls OpenAI (which may incur a charge) and the Salesforce search endpoint when their configuration is present, and prints sanitized connection status. No Salesforce password is accepted; B2C SCAPI uses short code, organization ID, site ID, and a valid SLAS shopper access token. Automatic OAuth/token refresh is not implemented.
 
-Use keyword queries for this baseline. Natural-language intent and budget extraction are planned. The API is a local development server, not a production deployment.
+## Data and checks
 
-## Data
+[Download the full catalog ZIP](data/electroguide-catalog-50000.zip?raw=true). It contains JSONL, CSV, and a provenance/checksum manifest. Ten categories contain 5,000 synthetic SKUs each. Category illustrations are original local SVG depictions, not manufacturer photographs. The app extracts the bundled v2 catalog and builds its index on first run. Back up manually edited generated data before upgrading.
 
-[Download the full 50,000-product catalog ZIP](data/electroguide-catalog-50000.zip?raw=true), containing CSV, JSONL, and a provenance/checksum manifest. Extract it into `data/` to skip catalog generation, then build the index as above.
-50,000 unique fictional SKUs, 5,000 per category: TV, mobile, laptop, tablet, smartwatch, headphones, camera, monitor, speaker, and gaming console. Prices, stock, brands, and specifications are synthetic; images are absent. This is a controlled experimental dataset, not 50,000 real-world models. Uncompressed generated exports and the SQLite index are ignored by Git; regenerate them with the command above. A small committed sample makes the schema easy to inspect. The generator writes `data/manifest.json` with provenance, count, seed, and JSONL checksum.
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
 
-## Credentials
-No API key is included. Local catalog features require none; OpenAI explanations require a key configured locally. Revoke any key previously posted in chat. Supply a replacement only through secure environment configuration when the server-side LLM integration is ready. `.streamlit/secrets.toml.example` documents the active Streamlit settings. A `.env` file is not automatically loaded. Never expose an LLM key in browser code.
+For the optional standalone lexical API: `python scripts/generate_catalog.py`, `python -m scripts.build_index`, then `python -m app.server`. Streamlit does not require that server.
 
-## Academic and implementation documents
-- [Project scope, architecture, milestones, and evaluation](docs/PROJECT_PLAN.md)
-- [Salesforce integration checklist](docs/SALESFORCE_SETUP.md)
-- [Fictional store policies for future RAG](knowledge/store-policies.md)
+[Project research plan](docs/PROJECT_PLAN.md) · [Salesforce prerequisites](docs/SALESFORCE_SETUP.md)
 
-All policies and inventory are academic examples. This project accepts no real purchases and makes no real product or warranty claims.
+No real payments, persistent customer accounts, real orders, live inventory synchronization, or Salesforce checkout are implemented.
