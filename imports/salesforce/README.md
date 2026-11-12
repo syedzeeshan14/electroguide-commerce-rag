@@ -5,3 +5,7 @@ Use `product2-100.csv` with `python -m scripts.import_salesforce_catalog` after 
 The columns are standard Product2 fields, not Commerce-import headings. Description stores structured synthetic specifications, original SKU, simulated stock, and USD demo price. No WebStore, Commerce store, category assignment, custom fields, or native USD price book is required for the initial demonstration. Existing project product codes are skipped by the CLI unless `--update-existing` is explicitly requested.
 
 [Full setup guide](../../docs/SALESFORCE_CATALOG.md)
+
+## Full 50k catalog
+
+`product2-50000.csv.zip` contains the full standard Product2 CSV; the importer accepts the ZIP directly. Run `--dry-run`, then `--plan`, and import only when capacity fits. Existing codes are skipped by default. [Full instructions](../../docs/SALESFORCE_50000.md).

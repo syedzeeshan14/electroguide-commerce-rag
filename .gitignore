@@ -12,3 +12,6 @@ data/*
 .DS_Store
 !data/electroguide-catalog-50000.zip
 .streamlit/secrets.toml
+
+# Regenerable uncompressed full Product2 export; the compressed package is tracked.
+imports/salesforce/product2-50000.csv

@@ -11,7 +11,7 @@ if __name__=='__main__':
     try:
         client=SalesforceCatalogClient(settings())
         result=client.check_access()
-        result['active_project_products_visible']=len(client.imported_products(100))
+        result['active_project_products_visible']=client.project_product_count()
         print('Salesforce Product2 API access verified. No Commerce store is required.')
         print(json.dumps(result,indent=2))
     except ConnectionFailure as error:

@@ -53,7 +53,7 @@ Run the gate check:
 .\.venv\Scripts\python.exe -m scripts.check_salesforce_catalog
 ```
 
-Success explicitly reports **Product2 API access verified**, not merely that an unauthenticated version endpoint responded. It also reports whether the API user may create/update products and how many active project records are visible (up to 100).
+Success explicitly reports **Product2 API access verified**, not merely that an unauthenticated version endpoint responded. It also reports whether the API user may create/update products and the aggregate count of active project records visible to that user.
 
 If you see `API_DISABLED_FOR_ORG`, this org cannot provide the required API access under its current entitlement. Use an API-enabled academic/developer org and reuse this code and CSV. If you see 401, check OAuth credentials/policy/token expiration. If you see 403 or an object/field access error, have the administrator check API and Product2 permissions. Do not share credential values while troubleshooting.
 
@@ -79,7 +79,7 @@ After the API check passes and Product2 create access is available, import:
 .\.venv\Scripts\python.exe -m scripts.import_salesforce_catalog
 ```
 
-The owner import command **creates Product2 records in your configured Salesforce org**. It is limited to `EG-000001`-style project codes. Existing codes are skipped by default to avoid duplicate creation on reruns; duplicate codes already in Salesforce cause an error. Each batch requests `allOrNone`. If a later batch fails, earlier completed batches remain; rerun normally to skip those already created. The first sample is one 100-record batch. The importer supports at most 1,000 rows per invocation to keep the initial demonstration manageable.
+The owner import command **creates Product2 records in your configured Salesforce org**. It is limited to `EG-000001`-style project codes. Existing codes are skipped by default to avoid duplicate creation on reruns; duplicate codes already in Salesforce cause an error. Each batch requests `allOrNone`. If a later batch fails, earlier completed batches remain; rerun normally to skip those already created. The first sample is one 100-record batch. The importer supports up to 50,000 rows, with capacity preflight for files larger than 1,000 rows. Start with 100, then follow the [50k import guide](SALESFORCE_50000.md).
 
 Only when you intentionally want to overwrite matching existing project records with the sample, add `--update-existing`. This option updates Name, ProductCode, Description, and IsActive for matched project records; it is not required for the first import.
 

@@ -34,6 +34,8 @@ For the observed INR org, USD demo prices are explicitly stored in Description m
 
 The earlier [Lightning D2C Commerce-store guide](docs/LIGHTNING_D2C_IMPORT.md) is retained as an optional future path; it is not required for Product2 integration.
 
+For the full catalog, [import and sync 50,000 Product2 records](docs/SALESFORCE_50000.md) with storage/API preflight, 200-record REST batches, progress, and rerun support. [Download the full Product2 ZIP](imports/salesforce/product2-50000.csv.zip?raw=true).
+
 ## Where OpenAI and Salesforce are used
 
 | Component | Current role | Current limitation |

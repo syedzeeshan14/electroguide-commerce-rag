@@ -1,5 +1,8 @@
 """Store-independent Product2 catalog integration; no Commerce endpoints are used."""
 import csv
+from contextlib import contextmanager
+import io
+from zipfile import ZipFile
 import json
 import math
 from pathlib import Path
@@ -50,21 +53,41 @@ class SalesforceCatalogClient(LightningClient):
                 'product2_update':schema.get('updateable') is True}
 
     def imported_products(self,limit=100):
-        if not 1<=limit<=1000:
-            raise ConnectionFailure('Use a catalog sync limit between 1 and 1000; start with 100.')
+        if not 1<=limit<=50000:
+            raise ConnectionFailure('Use a catalog sync limit between 1 and 50,000.')
         return list(self.query("SELECT Id,Name,ProductCode,Description,IsActive FROM Product2 WHERE IsActive=true AND ProductCode LIKE 'EG-%' ORDER BY ProductCode LIMIT "+str(int(limit))))
 
+    def project_product_count(self):
+        rows=list(self.query("SELECT COUNT(Id) total FROM Product2 WHERE IsActive=true AND ProductCode LIKE 'EG-%'"))
+        if len(rows)!=1 or not isinstance(rows[0].get('total'),int):
+            raise ConnectionFailure('Salesforce did not return a valid product count.')
+        return rows[0]['total']
+
+    def limits(self):
+        result=self._request('GET',self.api_root()+'/limits')
+        if not isinstance(result,dict):
+            raise ConnectionFailure('Salesforce did not return org limits.')
+        return result
+
     def existing_codes(self,codes):
-        records={}
-        for start in range(0,len(codes),100):
-            batch=codes[start:start+100]
-            if any(not re.fullmatch(r'EG-\d{6}',code) for code in batch):
-                raise ConnectionFailure('Only EG-000001-style product codes can be imported by this tool.')
-            literals=','.join("'"+code+"'" for code in batch)
-            for record in self.query(f'SELECT Id,ProductCode FROM Product2 WHERE ProductCode IN ({literals})'):
-                if record['ProductCode'] in records:
-                    raise ConnectionFailure('Duplicate project ProductCode values exist in Salesforce. Resolve them before importing.')
-                records[record['ProductCode']]=record['Id']
+        if any(not re.fullmatch(r'EG-\d{6}',code) for code in codes):
+            raise ConnectionFailure('Only EG-000001-style product codes can be imported by this tool.')
+        records={};requested=set(codes)
+        def remember(record):
+            if record['ProductCode'] not in requested:
+                return
+            if record['ProductCode'] in records:
+                raise ConnectionFailure('Duplicate project ProductCode values exist in Salesforce. Resolve them before importing.')
+            records[record['ProductCode']]=record['Id']
+        if len(codes)>1000:
+            # One paginated prefix query is cheaper than hundreds of small IN queries.
+            for record in self.query("SELECT Id,ProductCode FROM Product2 WHERE ProductCode LIKE 'EG-%' ORDER BY ProductCode"):
+                remember(record)
+        else:
+            for start in range(0,len(codes),100):
+                literals=','.join("'"+code+"'" for code in codes[start:start+100])
+                for record in self.query(f'SELECT Id,ProductCode FROM Product2 WHERE ProductCode IN ({literals})'):
+                    remember(record)
         return records
 
     def write_products(self,records,update=False):
@@ -75,8 +98,23 @@ class SalesforceCatalogClient(LightningClient):
         return len(result)
 
 
+@contextmanager
+def product_csv_stream(path):
+    path=Path(path)
+    if path.suffix.lower()=='.zip':
+        with ZipFile(path) as archive:
+            members=archive.infolist()
+            if len(members)!=1 or not members[0].filename.lower().endswith('.csv') or members[0].file_size>100*1024*1024:
+                raise ConnectionFailure('Use a ZIP containing one Product2 CSV no larger than 100 MB.')
+            with archive.open(members[0]) as binary,io.TextIOWrapper(binary,encoding='utf-8-sig',newline='') as handle:
+                yield handle
+    else:
+        with path.open(encoding='utf-8-sig',newline='') as handle:
+            yield handle
+
+
 def read_product_csv(path):
-    with Path(path).open(encoding='utf-8-sig',newline='') as handle:
+    with product_csv_stream(path) as handle:
         reader=csv.DictReader(handle)
         if reader.fieldnames!=['Name','ProductCode','Description','IsActive']:
             raise ConnectionFailure('Use the standard Product2 CSV with Name,ProductCode,Description,IsActive columns; not the Commerce CSV.')
@@ -90,22 +128,56 @@ def read_product_csv(path):
             normalize_catalog_record({**row,'Id':'01t000000000001AAA'})
             seen.add(code)
             rows.append({**row,'IsActive':row['IsActive']=='true'})
-    if not 1<=len(rows)<=1000:
-        raise ConnectionFailure('Use 1–1000 rows per owner import; start with the provided 100-product CSV.')
+            if len(rows)>50000:
+                raise ConnectionFailure('Maximum supported Product2 import is 50,000 rows.')
+    if not 1<=len(rows)<=50000:
+        raise ConnectionFailure('Use 1–50,000 rows per owner import.')
     return rows
 
 
-def import_product_records(client,rows,update_existing=False):
+def plan_product_import(client,rows,update_existing=False,batch_size=200):
+    if not 1<=batch_size<=200:
+        raise ConnectionFailure('REST batch size must be between 1 and 200.')
     access=client.check_access()
     existing=client.existing_codes([row['ProductCode'] for row in rows])
     creates=[row for row in rows if row['ProductCode'] not in existing]
     updates=[{'Id':existing[row['ProductCode']],**row} for row in rows if row['ProductCode'] in existing] if update_existing else []
     if creates and not access['product2_create'] or updates and not access['product2_update']:
         raise ConnectionFailure('This API user lacks Product2 create/update permission for the requested operation.')
-    report={'created':0,'updated':0,'skipped_existing':len(existing) if not update_existing else 0}
+    plan={'file_products':len(rows),'create_count':len(creates),'update_count':len(updates),
+          'skipped_existing':len(existing) if not update_existing else 0,
+          'estimated_write_requests':math.ceil(len(creates)/batch_size)+math.ceil(len(updates)/batch_size),
+          'capacity_checked':False,'capacity_sufficient':True}
+    if len(rows)>1000:
+        limits=client.limits()
+        def remaining(key):
+            value=limits.get(key,{}).get('Remaining')
+            if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value<0:
+                raise ConnectionFailure('Cannot read reliable Salesforce '+key+' remaining limits. No large import was started.')
+            return value
+        # Planning estimate only: common Salesforce record allocation ~2 KB, plus 25% and 5 MB headroom.
+        # Org automation and asynchronously updated limits can require additional storage.
+        storage=math.ceil(len(creates)*2/1024*1.25)+5 if creates else 0
+        available_storage=remaining('DataStorageMB');available_calls=remaining('DailyApiRequests')
+        api_needed=plan['estimated_write_requests']+10 if plan['estimated_write_requests'] else 0
+        plan.update(capacity_checked=True,estimated_storage_mb=storage,remaining_data_storage_mb=available_storage,
+                    remaining_api_requests=available_calls,estimated_api_requests_after_plan=api_needed,
+                    capacity_sufficient=storage<=available_storage and api_needed<=available_calls)
+    return plan,creates,updates
+
+
+def import_product_records(client,rows,update_existing=False,batch_size=200,progress=None):
+    plan,creates,updates=plan_product_import(client,rows,update_existing,batch_size)
+    if not plan['capacity_sufficient']:
+        raise ConnectionFailure('Insufficient Salesforce capacity for this import plan: estimated storage '+str(plan['estimated_storage_mb'])+
+                                ' MB; available '+str(plan['remaining_data_storage_mb'])+' MB; required API requests '+str(plan['estimated_api_requests_after_plan'])+
+                                '; available '+str(plan['remaining_api_requests'])+'. No records were written. Use --plan for details.')
+    report={'created':0,'updated':0,'skipped_existing':plan['skipped_existing']}
     for group,updating,key in [(creates,False,'created'),(updates,True,'updated')]:
-        for start in range(0,len(group),100):
-            report[key]+=client.write_products(group[start:start+100],update=updating)
+        for start in range(0,len(group),batch_size):
+            report[key]+=client.write_products(group[start:start+batch_size],update=updating)
+            if progress:
+                progress({**report,'file_products':len(rows),'remaining':len(creates)+len(updates)-report['created']-report['updated']})
     return report
 
 

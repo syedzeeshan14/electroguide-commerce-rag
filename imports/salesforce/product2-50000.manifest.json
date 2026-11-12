@@ -1,0 +1,9 @@
+{
+  "products": 50000,
+  "format": "standard Product2 object CSV",
+  "csv": "product2-50000.csv",
+  "csv_sha256": "87266607c483f5163ab29676b7e1a59eb0f256e8ee7c9b3354f7dc8a94002d90",
+  "zip_sha256": "7c24a7069d454a3d9046eb2761fad665d97493a6e44de580efb4ff648070fac3",
+  "synthetic": true,
+  "existing_codes_skipped_by_default": true
+}

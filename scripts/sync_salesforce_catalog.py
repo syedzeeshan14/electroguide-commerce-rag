@@ -9,8 +9,8 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--limit',type=int,default=100)
     args=parser.parse_args()
-    if not 1<=args.limit<=1000:
-        parser.error('Use 1–1000 records; start with 100')
+    if not 1<=args.limit<=50000:
+        parser.error('Use 1–50,000 records')
     try:
         result=sync_product_catalog(SalesforceCatalogClient(settings()),ROOT/'data',args.limit)
         print(json.dumps(result,indent=2))

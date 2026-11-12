@@ -2,6 +2,8 @@
 import argparse
 import csv
 import json
+import hashlib
+from zipfile import ZipFile,ZIP_DEFLATED
 from pathlib import Path
 from scripts.export_lightning_import import import_row,METADATA_MARKER
 from scripts.generate_catalog import generate
@@ -32,7 +34,19 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--count',type=int,default=100)
     parser.add_argument('--output',default='imports/salesforce/product2-100.csv')
+    parser.add_argument('--zip',action='store_true',help='Also write a ZIP containing the CSV and a separate checksum manifest')
     args=parser.parse_args()
     if not 1<=args.count<=50000:
         parser.error('count must be between 1 and 50,000; start with 100 in Salesforce')
-    print(export_products(args.output,args.count))
+    path=export_products(args.output,args.count)
+    if args.zip:
+        archive=Path(str(path)+'.zip')
+        with ZipFile(archive,'w',ZIP_DEFLATED) as handle:
+            handle.write(path,path.name)
+        manifest={'products':args.count,'format':'standard Product2 object CSV','csv':path.name,
+                  'csv_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'zip_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),
+                  'synthetic':True,'existing_codes_skipped_by_default':True}
+        path.with_suffix('.manifest.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
+        print(archive)
+    else:
+        print(path)
