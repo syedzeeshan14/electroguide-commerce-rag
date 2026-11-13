@@ -136,3 +136,11 @@ Set multicurrency true only when it is actually enabled; the query then filters 
 ### OAuth HTTP 400 troubleshooting
 
 The platform connector now displays recognized OAuth error codes from the token response, such as `invalid_client` or `invalid_grant`, with fixed troubleshooting guidance. It does not print token response bodies, secrets, or arbitrary provider descriptions. `invalid_client` calls for checking the new org's current Consumer Key/Secret and enabled app; `invalid_grant` calls for checking Client Credentials Flow and its active Run As user. A generic HTTP 400 is not evidence of `API_DISABLED_FOR_ORG`. The latter is an explicit API error code, not the conditional explanatory footer printed by the catalog check.
+
+If Settings and Policies both show Client Credentials enabled but authentication still reports no execution user, compare the active local configuration with the exact org/app being edited:
+
+```powershell
+.\.venv-sf\Scripts\python.exe -m scripts.check_salesforce_oauth --compare-app --test-login
+```
+
+The script prints project/current folders, settings-file existence and match flags, a sanitized My Domain base URL, and credential-presence flags. Enter the Current My Domain URL and paste the selected app's Consumer Key at the hidden terminal prompt. The entered key is compared in memory, not printed or written to disk. Do not enter the Consumer Secret at this prompt. A mismatch stops before login. A matching configuration can request a token to reproduce the OAuth result without printing or storing it; no Salesforce records are written. Do not share screenshots of consumer details or secrets.toml.
