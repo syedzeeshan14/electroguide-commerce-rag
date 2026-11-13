@@ -50,3 +50,9 @@ A content document can expose a file source reference (for example an ID beginni
 For a delivery URL on the same tenant's Lightning host, only `/cms/delivery/` paths are mapped to the configured My Domain for authenticated download. Arbitrary Lightning pages and authoring URLs are not rewritten. Access to metadata and an `isPublished` flag alone do not prove that a delivery channel is accessible to this OAuth user. A missing channel/delivery URL reports that limitation explicitly. This route is covered by mocked regression tests; the owner must still verify the actual image download against their org.
 
 Salesforce API references: [CMS Space Channels](https://developer.salesforce.com/docs/platform/connect-rest-api/guide/connect_resources_cms_space_channels.html) and [Connect REST API guide](https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/salesforce_chatter_rest_api.pdf), Enhanced CMS Workspaces Resources, CMS Delivery Content.
+
+## Download succeeds but the card still shows an illustration
+
+Use the exact product code, not just its name: synthetic variants can share names. Shop now accepts an exact `EG-040683` query without rebuilding the index, and cards display the product code. Restart the actual Streamlit process after updating the renderer.
+
+Run `python -m scripts.check_salesforce_image --product-code EG-040683` from the same project directory used to launch the app. This local-only diagnostic reports the project folder, active catalog source, whether that exact product is present, its Salesforce ID, whether an image is cached for that ID, and whether the installed renderer supports cached images. It makes no Salesforce/OpenAI request and prints no credentials. A demo catalog, a different Salesforce record ID, an older source file, or a different project folder can each explain a successful download followed by an illustration.

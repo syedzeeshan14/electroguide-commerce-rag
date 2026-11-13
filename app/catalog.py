@@ -30,7 +30,11 @@ class Catalog:
         clauses, params = [], []
         join = ''
         order = 'p.price, p.id'
-        if tokens:
+        exact_code = re.fullmatch(r'EG-[0-9]{6}', query.strip(), re.IGNORECASE)
+        if exact_code:
+            clauses.append('p.id=?')
+            params.append(query.strip().upper())
+        elif tokens:
             join = ' JOIN product_search ON p.id=product_search.id'
             clauses.append('product_search MATCH ?')
             params.append(' AND '.join('"' + token + '"' for token in tokens))

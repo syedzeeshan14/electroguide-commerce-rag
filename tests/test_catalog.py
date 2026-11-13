@@ -29,6 +29,9 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(catalog.search('" OR * --'),[])
             with self.assertRaises(ValueError):
                 catalog.search(max_price=-10)
+            target=next(p for p in items if p['stock']>0)
+            self.assertEqual([p['id'] for p in catalog.search(target['id'].lower())],[target['id']])
+            self.assertEqual(catalog.search(target['id'],max_price=0),[])
             catalog.connection.close()
 
 if __name__ == '__main__':

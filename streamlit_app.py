@@ -47,6 +47,7 @@ def product_card(product,prefix,reason=None):
             st.image(str(photo),width='stretch')
         else:
             st.markdown('<div class="product-art">'+illustration(product['category'])+'</div>',unsafe_allow_html=True)
+        st.caption(product['id'])
         specs=product['specifications']
         highlights=[]
         for key,label in [('ram_gb','GB RAM'),('storage_gb','GB storage'),('screen_inches','″ display'),('resolution',''),('battery_hours','h battery'),('megapixels','MP'),('case_mm','mm'),('power_watts','W')]:
