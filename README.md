@@ -20,7 +20,7 @@ Open http://localhost:8501. Stop an older running server with Ctrl+C before star
 
 ## Customer experience
 
-Three top navigation buttons: **Shop**, **Find my match**, and **Bag**. No sidebar, compare, wishlist, dashboard, or connection settings in the customer interface. The shop has a short discovery form and a searchable, paginated collection. The finder returns at most three distinct catalog configurations, with factual specification/price reasons; the bag supports a clearly labeled simulated checkout. State is session-only.
+Three top navigation buttons: **Shop**, **Find my match**, and **Bag**. No sidebar, compare, wishlist, dashboard, or connection settings in the customer interface. The shop has a short discovery form and a searchable, paginated collection. The finder returns at most three distinct catalog configurations, with factual specification/price reasons; the bag supports a clearly labeled simulated checkout. The bag and local demo checkout use session state. Optional Salesforce draft orders have a local receipt ledger.
 
 Try: `A laptop for studying under $1500 with at least 16GB RAM`.
 
@@ -80,6 +80,8 @@ For the optional standalone lexical API: `python scripts/generate_catalog.py`, `
 
 [Project research plan](docs/PROJECT_PLAN.md) · [Salesforce prerequisites](docs/SALESFORCE_SETUP.md)
 
-No real payments, persistent customer accounts, real orders, live inventory synchronization, or Salesforce checkout are implemented.
+No real payments, persistent customer accounts, live inventory synchronization, or native Commerce checkout are implemented. Optional standard Salesforce draft Order/OrderItem records can be created after setup; their Salesforce-generated order number is displayed in the storefront.
+
+[Set up matching Salesforce and Streamlit order numbers](docs/SALESFORCE_ORDERS.md).
 
 [Sync Salesforce product Media images into the storefront](docs/SALESFORCE_IMAGES.md).

@@ -5,6 +5,7 @@ import streamlit as st
 from app.design import CSS, illustration, LABELS
 from app.runtime import ROOT, prepare_catalog, settings
 from app.semantic import EmbeddingIndex
+from app.salesforce_orders import SalesforceOrderClient,cart_details,submit_order
 from app.product_images import cached_image_path
 from app.shopping import recommend, constraints, subtotal, comparison_rows
 from app.integrations import ConnectionFailure, grounded_answer, extract_preferences
@@ -186,12 +187,38 @@ else:
     if st.session_state.cart:
         st.metric('Subtotal',f'${total:,.2f}')
         st.caption('Demo checkout. Tax and shipping are excluded. No payment is collected.')
-        if st.button('Complete demo order',type='primary'):
-            st.session_state.orders.append({'id':'EG-'+uuid.uuid4().hex[:8].upper(),'subtotal':total})
-            st.session_state.cart={}
-            st.rerun()
+        order_mode=config.get('SALESFORCE_ORDER_SYNC') or 'off'
+        if order_mode not in ('off','salesforce_draft'):
+            st.error('Order connection is not configured correctly.')
+        else:
+            if order_mode=='salesforce_draft':
+                st.caption('Saves a draft order in Salesforce. No payment is collected or stock reserved.')
+            if st.button('Save draft order' if order_mode=='salesforce_draft' else 'Complete demo order',type='primary'):
+                try:
+                    if order_mode=='salesforce_draft':
+                        _,signature,_=cart_details(st.session_state.cart)
+                        pending=st.session_state.get('pending_order')
+                        if not pending or pending['signature']!=signature:
+                            pending={'signature':signature,'reference':'EG-'+uuid.uuid4().hex}
+                            st.session_state.pending_order=pending
+                        with st.spinner('Saving your draft order…'):
+                            order=submit_order(SalesforceOrderClient(config),ROOT,st.session_state.cart,pending['reference'])
+                    else:
+                        order={'id':'EG-'+uuid.uuid4().hex[:8].upper(),'subtotal':total}
+                    st.session_state.orders.append(order)
+                    st.session_state.cart={}
+                    st.session_state.pop('pending_order',None)
+                    st.rerun()
+                except (ConnectionFailure,OSError) as error:
+                    st.error(str(error))
+                    st.info('Your bag is preserved. Retry from this page with the same bag so we can recover an order if Salesforce already saved it.')
     if st.session_state.orders:
         order=st.session_state.orders[-1]
-        st.success(f"Demo order {order['id']} confirmed · ${order['subtotal']:,.2f}")
+        if order.get('source')=='salesforce_draft':
+            st.success(f"Salesforce order {order['id']} · {order['status']} · ${order['subtotal']:,.2f}")
+            if order.get('url'):
+                st.link_button('View in Salesforce',order['url'])
+        else:
+            st.success(f"Demo order {order['id']} confirmed · ${order['subtotal']:,.2f}")
 
 st.markdown('<div class="footer"><strong>electroguide.</strong> &nbsp; Find your fit.<br>Demo storefront · Synthetic products · Representative photos and illustrations · No real payments</div>',unsafe_allow_html=True)
