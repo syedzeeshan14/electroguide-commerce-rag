@@ -54,14 +54,15 @@ def product_card(product,prefix,reason=None):
             if key in specs:
                 highlights.append(f'{specs[key]}{label}')
         summary=' · '.join(highlights[:3]) or specs.get('form_factor',specs.get('color',''))
-        st.markdown(f'<div class="category-label">{escape(LABELS[product["category"]])}</div><div class="product-name">{escape(product["name"])}</div><div class="spec-line">{escape(summary)}</div><div class="price-row"><span class="price">${product["price"]:,.2f}</span><span class="stock-pill">Available</span></div>',unsafe_allow_html=True)
+        availability='Available' if product['stock']>0 else 'Out of stock'
+        st.markdown(f'<div class="category-label">{escape(LABELS[product["category"]])}</div><div class="product-name">{escape(product["name"])}</div><div class="spec-line">{escape(summary)}</div><div class="price-row"><span class="price">${product["price"]:,.2f}</span><span class="stock-pill">{availability}</span></div>',unsafe_allow_html=True)
         if reason:
             st.markdown(f'<div class="match-reason">{escape(reason)}</div>',unsafe_allow_html=True)
         with st.expander('Product details'):
             for key,value in specs.items():
                 st.write(f"**{key.replace('_',' ').title()}:** {value}")
             st.caption(f"{product['id']} · "+('Image synced from Salesforce' if photo else 'Representative illustration'))
-        if st.button('Add to bag',type='primary',width='stretch',key=f"{prefix}-{product['id']}"):
+        if st.button('Add to bag',type='primary',width='stretch',key=f"{prefix}-{product['id']}",disabled=product['stock']<=0):
             existing=st.session_state.cart.get(product['id'])
             quantity=existing['quantity']+1 if existing else 1
             if quantity<=product['stock']:
@@ -118,7 +119,7 @@ if st.session_state.page=='Shop':
     if st.session_state.get('shop_filters')!=fingerprint:
         st.session_state.shop_page=0
         st.session_state.shop_filters=fingerprint
-    products=catalog.search(query=keywords,category=active_category,max_price=active_budget,limit=9,sort='featured',offset=st.session_state.shop_page*9)
+    products=catalog.search(query=keywords,category=active_category,max_price=active_budget,in_stock=False,limit=9,sort='featured',offset=st.session_state.shop_page*9)
     if not products:
         st.info('No products match. Try a broader search or a higher budget.')
     columns=st.columns(3)

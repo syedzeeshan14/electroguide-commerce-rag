@@ -12,7 +12,7 @@ class StreamlitTests(unittest.TestCase):
         labels=[button.label for button in app.button]
         for removed in ['Compare','Wishlist','Connections','Catalog dashboard','Shopping assistant']:
             self.assertNotIn(removed,labels)
-        next(b for b in app.button if b.label=='Add to bag').click().run()
+        next(b for b in app.button if b.label=='Add to bag' and not b.disabled).click().run()
         self.assertTrue(app.session_state['cart'])
         next(b for b in app.button if b.label.startswith('Bag (')).click().run()
         next(b for b in app.button if b.label=='Complete demo order').click().run()
@@ -26,7 +26,7 @@ class StreamlitTests(unittest.TestCase):
         products=app.session_state['match']['products']
         self.assertEqual(len(products),3)
         self.assertTrue(all(p['price']<=1500 and p['specifications']['ram_gb']>=16 for p in products))
-        next(b for b in app.button if b.label=='Add to bag').click().run()
+        next(b for b in app.button if b.label=='Add to bag' and not b.disabled).click().run()
         self.assertFalse(app.exception)
         self.assertTrue(app.session_state['cart'])
         self.assertEqual(len(app.session_state['match']['products']),3)

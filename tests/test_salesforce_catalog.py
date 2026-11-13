@@ -150,6 +150,14 @@ class SalesforceCatalogTests(unittest.TestCase):
                 next(button for button in app.button if button.label=='Add to bag').click().run()
                 self.assertFalse(app.exception)
                 self.assertEqual(next(iter(app.session_state['cart'].values()))['salesforce_id'],row['Id'])
+                metadata['demo_stock']=0
+                row['Description']=prose+METADATA_MARKER+json.dumps(metadata)
+                sync_product_catalog(client,root/'data')
+                unavailable=AppTest.from_file(str(Path(__file__).resolve().parents[1]/'streamlit_app.py'),default_timeout=30).run()
+                self.assertFalse(unavailable.exception)
+                self.assertTrue(any('Out of stock' in item.value for item in unavailable.markdown))
+                self.assertTrue(next(button for button in unavailable.button if button.label=='Add to bag').disabled)
+                self.assertTrue(any('Image synced from Salesforce' in caption.value for caption in unavailable.caption))
                 _prepare_product2_snapshot.clear()
 
 if __name__=='__main__': unittest.main()
