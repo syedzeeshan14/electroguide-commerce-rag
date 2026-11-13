@@ -41,6 +41,7 @@ def repair(root):
     recovered['SALESFORCE_ORDER_ACCOUNT_ID']=''
     recovered['SALESFORCE_ORDER_PRICEBOOK_ID']=''
     recovered['SALESFORCE_ORDER_DEMO_PRICING']='false'
+    recovered['SALESFORCE_ORDER_IMPORT_ON_DEMAND']='false'
     recovered['CATALOG_SOURCE']='demo'
     cleaned='# Recovered local settings. Keep this file private.\n'+''.join(key+' = '+json.dumps(value,allow_nan=False)+'\n' for key,value in recovered.items())
     tomllib.loads(cleaned)

@@ -63,7 +63,7 @@ def configure_local_credentials(root,config,domain,key,secret):
     old_host=urlparse(config.get('SALESFORCE_INSTANCE_URL','')).hostname
     if old_host!=urlparse(domain).hostname:
         updates.update(SALESFORCE_ORDER_SYNC='off',SALESFORCE_ORDER_ACCOUNT_ID='',
-                       SALESFORCE_ORDER_PRICEBOOK_ID='',SALESFORCE_ORDER_DEMO_PRICING='false',
+                       SALESFORCE_ORDER_PRICEBOOK_ID='',SALESFORCE_ORDER_DEMO_PRICING='false',SALESFORCE_ORDER_IMPORT_ON_DEMAND='false',
                        SALESFORCE_PRICEBOOK_ID='',SALESFORCE_PRICEBOOK_CURRENCY='',
                        SALESFORCE_CATALOG_PRICING='demo_metadata',CATALOG_SOURCE='demo',SALESFORCE_IMAGE_HOSTS='')
     save_local_settings(Path(root)/'.streamlit/secrets.toml',updates)

@@ -85,3 +85,5 @@ No real payments, persistent customer accounts, live inventory synchronization, 
 [Set up matching Salesforce and Streamlit order numbers](docs/SALESFORCE_ORDERS.md).
 
 [Sync Salesforce product Media images into the storefront](docs/SALESFORCE_IMAGES.md).
+
+For limited-storage Developer Edition orgs, the optional [50K local catalog with on-demand Salesforce orders](docs/SALESFORCE_ORDERS.md#50k-local-catalog-with-on-demand-salesforce-products) keeps all 50K products available to recommendations and creates only ordered products in Salesforce. This is distinct from storing the full catalog in Salesforce.

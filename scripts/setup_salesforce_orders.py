@@ -57,7 +57,7 @@ def setup_demo(client,progress=None):
     book=salesforce_id(books[0]['Id'] if books else created['book']['id'],'01s')
     return {'SALESFORCE_ORDER_ACCOUNT_ID':account,'SALESFORCE_ORDER_PRICEBOOK_ID':book,
             'SALESFORCE_ORDER_DEMO_PRICING':'true','SALESFORCE_ORDER_SYNC':'salesforce_draft',
-            'CATALOG_SOURCE':'salesforce_catalog_snapshot'}
+            'CATALOG_SOURCE':'salesforce_catalog_snapshot','SALESFORCE_ORDER_IMPORT_ON_DEMAND':'false'}
 
 
 if __name__=='__main__':
@@ -65,7 +65,10 @@ if __name__=='__main__':
     parser.add_argument('--apply',action='store_true',help='Create the dedicated demo Account/price book and enable on-demand demo USD pricing')
     parser.add_argument('--configure-local',action='store_true',help='Save non-secret order settings in the existing local secrets.toml; requires --apply')
     parser.add_argument('--diagnose',action='store_true',help='Read-only object and field capability report; no setup writes')
+    parser.add_argument('--local-50k',action='store_true',help='Use all local products and import only bag products into Salesforce; requires --apply')
     args=parser.parse_args()
+    if args.local_50k and not args.apply:
+        parser.error('--local-50k requires --apply')
     if args.diagnose and (args.apply or args.configure_local):
         parser.error('--diagnose cannot be combined with setup-write flags')
     if args.configure_local and not args.apply:
@@ -79,6 +82,8 @@ if __name__=='__main__':
         print(json.dumps(access,indent=2))
         if args.apply:
             updates=setup_demo(client,progress=lambda message:print(message,flush=True))
+            if args.local_50k:
+                updates.update(CATALOG_SOURCE='demo',SALESFORCE_ORDER_IMPORT_ON_DEMAND='true')
             if args.configure_local:
                 print('Saving local non-secret order settings…',flush=True)
                 save_local_settings(ROOT/'.streamlit/secrets.toml',updates)

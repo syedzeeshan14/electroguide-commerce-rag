@@ -78,3 +78,28 @@ In Setup → Order Settings, enable Orders if the edition provides this setting.
 ### Setup transport failures
 
 Setup prints stages for access/currency checks, Standard Price Book lookup, demo record lookups, atomic creation and local configuration saving. Transport errors distinguish timeout, TLS validation, connection failure and HTTP 200 non-JSON responses and identify the method/API path, without logging credentials, query strings or response bodies. A timeout during a write can leave the result uncertain: rerun the same setup so it checks for existing dedicated demo records before creating missing ones. Do not delete records solely because a response was lost. TLS verification stays enabled.
+
+## 50K local catalog with on-demand Salesforce products
+
+A free Developer Edition storage plan can reject 50K Product2 records even when API calls are available (the observed plan needed 127 MB with only 5 MB free). Do not force that import. Enable the hybrid academic mode instead:
+
+```powershell
+.\.venv-sf\Scripts\python.exe -m scripts.setup_salesforce_orders --apply --configure-local --local-50k
+.\.venv-sf\Scripts\python.exe -m streamlit run streamlit_app.py
+```
+
+This reuses the dedicated demo Account/price book, sets the catalog source to the bundled local 50K dataset, enables draft orders and enables `SALESFORCE_ORDER_IMPORT_ON_DEMAND`. No 50K Salesforce import is attempted. Shop and semantic recommendations use all 50K local fictional products; the UI shows the actual local count. If the local demo data has an older or smaller manifest, its known source files are backed up under ignored `data/catalog_backups` before restoring the bundled 50K catalog and rebuilding the local index.
+
+When saving a draft order, the connector:
+
+1. Validates the local USD bag and checks for an existing Salesforce order with the same request reference before doing any import.
+2. Looks up bag product codes in Salesforce, reusing existing records and rejecting ambiguous duplicates.
+3. Checks conservative remaining storage headroom for the bag's product, price, order and line records.
+4. Creates only missing bag Product2 records, then resolves their IDs. Existing products are not overwritten, activated or repriced. Differing prices or availability still block checkout rather than silently changing the order.
+5. Prepares missing dedicated academic USD pricing and creates the standard Draft Order and its lines as before, displaying the Salesforce-generated OrderNumber.
+
+The bag holds at most 20 distinct products. Product/price setup can remain after an order failure; retries reuse those records. Order header/line creation remains atomic, and a lost confirmation can be recovered using the original local-cart fingerprint. This mode does not make the local dataset a Salesforce catalog snapshot, nor does it store all 50K products in Salesforce. During a demonstration, accurately describe it as **a 50K local recommendation catalog with on-demand Salesforce product and draft-order integration**.
+
+The org still has finite storage as more distinct products and orders accumulate; this is not unlimited capacity. Checks use estimates and Salesforce-reported limits, which may update asynchronously. For bulk experiments requiring all 50K records inside Salesforce, use an appropriately provisioned org.
+
+Local product-code → current-org Salesforce-ID mappings are saved after on-demand binding, so subsequently synced Salesforce product images can override category photos for those codes. Old-org images/IDs are not reused. Existing category photos remain available for the other local products. OpenAI embeddings continue to use the local catalog; the owner can keep the existing compatible embedding cache.

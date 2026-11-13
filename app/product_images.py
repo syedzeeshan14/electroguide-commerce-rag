@@ -44,14 +44,21 @@ def cache_directory(root,instance_url):
 
 
 def cached_image_path(product,root,settings):
-    if product.get('source')!='salesforce_catalog_snapshot' or not product.get('salesforce_id'):
+    local_mode=product.get('source','demo')=='demo' and str(settings.get('SALESFORCE_ORDER_IMPORT_ON_DEMAND','')).lower()=='true'
+    if product.get('source')!='salesforce_catalog_snapshot' and not local_mode:
         return None
     directory=cache_directory(root,settings.get('SALESFORCE_INSTANCE_URL',''))
     if directory is None:
         return None
     try:
+        record_id=product.get('salesforce_id')
+        if local_mode:
+            links=json.loads((directory/'product-links.json').read_text(encoding='utf-8'))
+            record_id=links.get(product['id'])
+        if not record_id:
+            return None
         index=json.loads((directory/'index.json').read_text(encoding='utf-8'))
-        filename=index.get(product['salesforce_id'],{}).get('filename','')
+        filename=index.get(record_id,{}).get('filename','')
         if not isinstance(filename,str) or not re.fullmatch(r'[a-f0-9]{64}\.(png|jpg|webp|gif)',filename):
             return None
         path=directory/filename

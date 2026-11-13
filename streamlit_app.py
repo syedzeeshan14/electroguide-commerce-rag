@@ -37,7 +37,10 @@ match.button('Find my match',width='stretch',on_click=navigate,args=('Match',))
 count=sum(p['quantity'] for p in st.session_state.cart.values())
 bag.button(f'Bag ({count})',width='stretch',on_click=navigate,args=('Bag',))
 st.divider()
-if getattr(catalog,'source','demo')=='lightning_snapshot':
+if getattr(catalog,'source','demo')=='demo' and str(config.get('SALESFORCE_ORDER_IMPORT_ON_DEMAND','')).lower()=='true':
+    local_count=catalog.connection.execute('SELECT count(*) FROM products').fetchone()[0]
+    st.caption(f'{local_count:,} locally stored products · Products are added to Salesforce when saving a draft order · Availability is simulated')
+elif getattr(catalog,'source','demo')=='lightning_snapshot':
     st.caption('Catalog synced from Salesforce · Availability and checkout are simulated')
 elif getattr(catalog,'source','demo')=='salesforce_catalog_snapshot':
     st.caption('Salesforce product catalog · USD demo prices, availability and checkout are simulated' if catalog.price_source=='synthetic_usd_metadata' else 'Salesforce product catalog · Selected USD price-book snapshot · Availability and checkout are simulated')
@@ -196,7 +199,7 @@ else:
             if st.button('Save draft order' if order_mode=='salesforce_draft' else 'Complete demo order',type='primary'):
                 try:
                     if order_mode=='salesforce_draft':
-                        _,signature,_=cart_details(st.session_state.cart)
+                        _,signature,_=cart_details(st.session_state.cart,allow_local=str(config.get('SALESFORCE_ORDER_IMPORT_ON_DEMAND','')).lower()=='true')
                         pending=st.session_state.get('pending_order')
                         if not pending or pending['signature']!=signature:
                             pending={'signature':signature,'reference':'EG-'+uuid.uuid4().hex}

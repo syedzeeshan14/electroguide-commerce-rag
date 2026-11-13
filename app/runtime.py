@@ -3,6 +3,8 @@ import os
 import json
 import sqlite3
 import zipfile
+import shutil
+import uuid
 import streamlit as st
 from app.catalog import Catalog
 from scripts.generate_catalog import CATALOG_VERSION
@@ -15,10 +17,20 @@ def _prepare_demo_catalog():
     database=data/f'catalog-v{CATALOG_VERSION}.sqlite'
     manifest_path=data/'manifest.json'
     try:
-        local_version=json.loads(manifest_path.read_text()).get('catalog_version',1)
+        local_manifest=json.loads(manifest_path.read_text())
+        local_version=local_manifest.get('catalog_version',1)
+        local_count=local_manifest.get('count',0)
     except (FileNotFoundError,ValueError):
-        local_version=0
-    if not source.exists() or local_version<CATALOG_VERSION:
+        local_version=0;local_count=0
+    restored=False
+    if not source.exists() or local_version<CATALOG_VERSION or local_count!=50000:
+        if source.exists():
+            backup=data/'catalog_backups'/uuid.uuid4().hex
+            backup.mkdir(parents=True,exist_ok=True)
+            for name in ('products.jsonl','products.csv','manifest.json'):
+                if (data/name).is_file():
+                    shutil.copy2(data/name,backup/name)
+        restored=True
         with zipfile.ZipFile(data/'electroguide-catalog-50000.zip') as archive:
             # Extract only the known data members, never arbitrary paths.
             for name in ('products.jsonl','products.csv','manifest.json'):
@@ -26,14 +38,14 @@ def _prepare_demo_catalog():
     catalog=Catalog(str(database))
     try:
         count=catalog.connection.execute('SELECT count(*) FROM products').fetchone()[0]
-        if count == 0:
+        if restored or count != 50000:
             catalog.build(source)
     except sqlite3.OperationalError:
         catalog.build(source)
     return catalog
 
 def settings():
-    names=['OPENAI_API_KEY','OPENAI_MODEL','OPENAI_EMBEDDING_MODEL','OPENAI_EMBEDDING_DIMENSIONS','SALESFORCE_SHORT_CODE','SALESFORCE_ORGANIZATION_ID','SALESFORCE_SITE_ID','SALESFORCE_ACCESS_TOKEN','CATALOG_SOURCE','SALESFORCE_INSTANCE_URL','SALESFORCE_API_VERSION','SALESFORCE_CLIENT_ID','SALESFORCE_CLIENT_SECRET','SALESFORCE_WEBSTORE_ID','SALESFORCE_PRICEBOOK_ID','SALESFORCE_EFFECTIVE_ACCOUNT_ID','SALESFORCE_MULTI_CURRENCY','SALESFORCE_CATALOG_PRICING','SALESFORCE_PRICEBOOK_CURRENCY','SALESFORCE_IMAGE_HOSTS','SALESFORCE_ORDER_SYNC','SALESFORCE_ORDER_ACCOUNT_ID','SALESFORCE_ORDER_PRICEBOOK_ID','SALESFORCE_ORDER_DEMO_PRICING']
+    names=['OPENAI_API_KEY','OPENAI_MODEL','OPENAI_EMBEDDING_MODEL','OPENAI_EMBEDDING_DIMENSIONS','SALESFORCE_SHORT_CODE','SALESFORCE_ORGANIZATION_ID','SALESFORCE_SITE_ID','SALESFORCE_ACCESS_TOKEN','CATALOG_SOURCE','SALESFORCE_INSTANCE_URL','SALESFORCE_API_VERSION','SALESFORCE_CLIENT_ID','SALESFORCE_CLIENT_SECRET','SALESFORCE_WEBSTORE_ID','SALESFORCE_PRICEBOOK_ID','SALESFORCE_EFFECTIVE_ACCOUNT_ID','SALESFORCE_MULTI_CURRENCY','SALESFORCE_CATALOG_PRICING','SALESFORCE_PRICEBOOK_CURRENCY','SALESFORCE_IMAGE_HOSTS','SALESFORCE_ORDER_SYNC','SALESFORCE_ORDER_ACCOUNT_ID','SALESFORCE_ORDER_PRICEBOOK_ID','SALESFORCE_ORDER_DEMO_PRICING','SALESFORCE_ORDER_IMPORT_ON_DEMAND']
     values={name:os.environ.get(name,'') for name in names}
     try:
         if not values['OPENAI_API_KEY'] and st.secrets.get('api_key'):

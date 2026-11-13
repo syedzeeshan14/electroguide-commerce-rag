@@ -3,12 +3,13 @@ from datetime import date
 from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import sqlite3
 from app.integrations import ConnectionFailure
-from app.lightning import LightningClient,salesforce_id
-from app.salesforce_catalog import demo_metadata
+from app.lightning import salesforce_id
+from app.salesforce_catalog import SalesforceCatalogClient,demo_metadata
 
 BOOK_NAME='ElectroGuide Academic USD'
 BOOK_DESCRIPTION='ElectroGuide academic demo pricing; not a live storefront price book.'
@@ -37,14 +38,20 @@ def money(value):
         raise ConnectionFailure('Invalid USD order amount.') from None
 
 
-def cart_details(cart):
+def cart_details(cart,allow_local=False):
     if not isinstance(cart,dict) or not 1<=len(cart)<=20:
         raise ConnectionFailure('Use 1–20 distinct products per academic order.')
     lines=[];seen=set()
     for product in cart.values():
-        if product.get('source')!='salesforce_catalog_snapshot' or product.get('currency')!='USD':
-            raise ConnectionFailure('Salesforce orders require a synced USD Salesforce product catalog.')
-        product_id=salesforce_id(product.get('salesforce_id',''),'01t')
+        is_local=product.get('source','demo')=='demo' and product.get('synthetic') is True
+        if product.get('currency')!='USD' or not (product.get('source')=='salesforce_catalog_snapshot' or allow_local and is_local):
+            raise ConnectionFailure('Use a synced Salesforce catalog, or enable academic on-demand import for the local USD catalog.')
+        if is_local:
+            if not re.fullmatch(r'EG-[0-9]{6}',product.get('id','')):
+                raise ConnectionFailure('Only EG-000001-style local demo products can be ordered.')
+            product_id='local:'+product['id']
+        else:
+            product_id=salesforce_id(product.get('salesforce_id',''),'01t')
         quantity=product.get('quantity')
         if isinstance(quantity,bool) or not isinstance(quantity,int) or not 1<=quantity<=product.get('stock',0):
             raise ConnectionFailure('Order quantity exceeds the listed demo stock.')
@@ -58,7 +65,7 @@ def cart_details(cart):
     return lines,signature,money(total)
 
 
-class SalesforceOrderClient(LightningClient):
+class SalesforceOrderClient(SalesforceCatalogClient):
     def access_diagnostic(self):
         report={}
         for name,required in REQUIRED_FIELDS.items():
@@ -185,14 +192,63 @@ class SalesforceOrderClient(LightningClient):
         return {'id':number,'salesforce_id':record_id,'subtotal':float(total),'source':'salesforce_draft','status':row.get('Status'),'currency':'USD',
                 'url':self.base+'/lightning/r/Order/'+record_id+'/view'}
 
+    def bind_local_products(self,cart):
+        """Create/reuse only local bag products. Never bulk-import the 50K catalog."""
+        from scripts.export_salesforce_products import product2_row
+        local=[product for product in cart.values() if product.get('source','demo')=='demo']
+        if not local:
+            return cart
+        if str(self.settings.get('SALESFORCE_ORDER_IMPORT_ON_DEMAND','')).lower()!='true' or str(self.settings.get('SALESFORCE_ORDER_DEMO_PRICING','')).lower()!='true':
+            raise ConnectionFailure('Local-catalog orders require explicit on-demand import and dedicated academic demo pricing setup.')
+        # Validate the complete bag before doing any import writes.
+        cart_details(cart,allow_local=True)
+        codes=[product['id'] for product in local]
+        existing=self.existing_codes(codes)
+        missing=[product for product in local if product['id'] not in existing]
+        remaining=self.limits().get('DataStorageMB',{}).get('Remaining')
+        # Product2 + up to two price entries + OrderItems/header, with headroom.
+        estimated=math.ceil((len(missing)+3*len(cart)+1)*2*1.25/1024)+1
+        if isinstance(remaining,bool) or not isinstance(remaining,(int,float)) or not math.isfinite(remaining) or remaining<estimated:
+            raise ConnectionFailure('Insufficient Salesforce storage headroom for this order and its product/price records. No new bag products were imported. Archive demo records through an approved org process or use a larger org.')
+        if missing:
+            if not self.check_access()['product2_create']:
+                raise ConnectionFailure('Product2 create permission is needed to add new bag products.')
+            rows=[{**product2_row(product),'IsActive':True} for product in missing]
+            self.write_products(rows)
+            existing=self.existing_codes(codes)
+        bound={}
+        for key,product in cart.items():
+            if product.get('source','demo')=='demo':
+                record_id=existing.get(product['id'])
+                if not record_id:
+                    raise ConnectionFailure('A bag product import could not be verified. Keep the bag and retry; existing codes are reused.')
+                bound[key]={**product,'salesforce_id':salesforce_id(record_id,'01t'),'source':'salesforce_catalog_snapshot'}
+            else:
+                bound[key]=product
+        if getattr(self,'local_root',None) is not None:
+            from app.product_images import cache_directory
+            directory=cache_directory(self.local_root,self.base)
+            directory.mkdir(parents=True,exist_ok=True)
+            path=directory/'product-links.json'
+            links=json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+            links.update({product['id']:existing[product['id']] for product in local})
+            temporary=directory/'product-links.tmp'
+            temporary.write_text(json.dumps(links,sort_keys=True)+'\n',encoding='utf-8')
+            temporary.replace(path)
+        return bound
+
     def create_draft(self,cart,reference):
         if not re.fullmatch(r'EG-[a-f0-9]{32}',reference):
             raise ConnectionFailure('Invalid checkout request reference.')
-        lines,signature,total=cart_details(cart)
+        allow_local=str(self.settings.get('SALESFORCE_ORDER_IMPORT_ON_DEMAND','')).lower()=='true'
+        lines,signature,total=cart_details(cart,allow_local=allow_local)
         self.require_usd()
         account,book=self.configured_records()
         existing=self.find_order(reference,account,book,signature,total)
         if existing: return existing
+        if any(line['product_id'].startswith('local:') for line in lines):
+            bound=self.bind_local_products(cart)
+            lines,_,_=cart_details(bound)
         if self.settings.get('SALESFORCE_ORDER_DEMO_PRICING','').lower()=='true':
             self.ensure_demo_prices(book,lines)
         entries=self.entries(book,lines)
@@ -224,7 +280,8 @@ class SalesforceOrderClient(LightningClient):
 
 def submit_order(client,root,cart,reference):
     """Serialize local retries and retain confirmed receipts across process restarts."""
-    _,signature,_=cart_details(cart)
+    allow_local=str(client.settings.get('SALESFORCE_ORDER_IMPORT_ON_DEMAND','')).lower()=='true'
+    _,signature,_=cart_details(cart,allow_local=allow_local)
     scope=hashlib.sha256(client.base.encode()).hexdigest()[:20]
     directory=Path(root)/'data/order_receipts';directory.mkdir(parents=True,exist_ok=True)
     try:
@@ -236,6 +293,7 @@ def submit_order(client,root,cart,reference):
                 if row[0]!=signature:
                     raise ConnectionFailure('This checkout reference belongs to a different bag.')
                 return json.loads(row[1])
+            client.local_root=Path(root)
             result=client.create_draft(cart,reference)
             connection.execute('INSERT INTO receipts VALUES (?,?,?)',(reference,signature,json.dumps(result)))
             return result
