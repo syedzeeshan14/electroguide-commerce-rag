@@ -38,9 +38,30 @@ class ProductImageTests(unittest.TestCase):
         client=ProductImageClient(CONFIG)
         with patch.object(client,'_object_for_id',return_value='ManagedContentInfo'),patch.object(client,'_request',side_effect=[
             {'ContentKey':'MCEXAMPLECONTENTKEY'},
-            {'contentBody':{'sfdc_cms:media':{'url':'/cms/media/MCEXAMPLECONTENTKEY'}}}]) as request:
-            self.assertEqual(client.media_urls(MEDIA),['/cms/media/MCEXAMPLECONTENTKEY'])
+            {'contentBody':{'sfdc_cms:media':{'url':'/cms/delivery/media/MCEXAMPLECONTENTKEY'}}}]) as request:
+            self.assertEqual(client.media_urls(MEDIA),['/cms/delivery/media/MCEXAMPLECONTENTKEY'])
             self.assertIn('/connect/cms/contents/MCEXAMPLECONTENTKEY',request.call_args.args[1])
+
+    def test_enhanced_authoring_preview_uses_workspace_delivery_document(self):
+        client=ProductImageClient(CONFIG)
+        key='MCWA5MYGI6YNE4THPYPQHWPFKWRQ'
+        content={'contentKey':key,'contentSpace':{'id':'0Zu000000000001AAA'},
+                 'contentBody':{'sfdc_cms:media':{'source':{'type':'file','ref':'0sN000000000001AAA'},'url':'/cms/media/'+key}}}
+        delivered={'contentBody':{'sfdc_cms:media':{'url':'https://demo.lightning.force.com/cms/delivery/media/'+key+'?channelId=0ap000000000001AAA'}}}
+        with patch.object(client,'_object_for_id',return_value='ManagedContent'),patch.object(client,'_request',side_effect=[
+            {'ContentKey':key},content,
+            {'spaceChannels':[{'status':'Added','channelSummary':{'id':'0ap000000000001AAA'}}]},delivered]) as request:
+            urls=client.media_urls(MEDIA)
+        self.assertEqual(urls,['/cms/delivery/media/'+key+'?channelId=0ap000000000001AAA'])
+        self.assertIn('/spaces/0Zu000000000001AAA/channels',request.call_args_list[2].args[1])
+        self.assertIn('/delivery/channels/0ap000000000001AAA/contents/'+key,request.call_args_list[3].args[1])
+
+    def test_missing_delivery_channel_reports_access_problem(self):
+        client=ProductImageClient(CONFIG)
+        content={'contentKey':'MCEXAMPLECONTENTKEY','contentSpace':{'id':'0Zu000000000001AAA'}}
+        with patch.object(client,'_request',return_value={'spaceChannels':[]}):
+            with self.assertRaisesRegex(ConnectionFailure,'existing workspace channels'):
+                client.cms_delivery_urls(content)
 
     def test_authenticated_download_never_forwards_token_to_cdn_on_redirect(self):
         client=ProductImageClient(CONFIG)

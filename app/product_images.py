@@ -127,6 +127,48 @@ class ProductImageClient(SalesforceCatalogClient):
             if key in payload:
                 yield from walk(payload[key])
 
+    def cms_delivery_urls(self,content):
+        """Resolve published enhanced-CMS media through existing workspace channels."""
+        space=salesforce_id((content.get('contentSpace') or {}).get('id',''),'0Zu')
+        key=content.get('contentKey','')
+        if not isinstance(key,str) or not re.fullmatch(r'[A-Za-z0-9_]{15,80}',key):
+            raise ConnectionFailure('CMS did not return a valid delivery content key.')
+        prefix=self.api_root()+f'/connect/cms/spaces/{space}/channels'
+        path=prefix;channels=[];seen=set()
+        while path:
+            if path in seen or len(seen)>=20:
+                raise ConnectionFailure('CMS channel pagination exceeded its limit.')
+            seen.add(path)
+            page=self._request('GET',path)
+            for row in page.get('spaceChannels',[]):
+                if row.get('status') not in (None,'Added'):
+                    continue
+                summary=row.get('channelSummary') or {}
+                channel=summary.get('id','')
+                if isinstance(channel,str) and re.fullmatch(r'0ap[A-Za-z0-9]{12}(?:[A-Za-z0-9]{3})?',channel):
+                    channels.append(channel)
+            path=page.get('nextPageUrl')
+            if path and (not isinstance(path,str) or not path.startswith(prefix+'?')):
+                raise ConnectionFailure('Invalid CMS workspace channel pagination URL.')
+        urls=[]
+        for channel in dict.fromkeys(channels):
+            try:
+                delivered=self._request('GET',self.api_root()+f'/connect/cms/delivery/channels/{channel}/contents/{key}')
+                for url in self._cms_image_urls(delivered):
+                    parsed=urlparse(url)
+                    # The same tenant's Lightning host is a UI origin. For CMS delivery
+                    # paths only, use its configured API origin, retaining query params.
+                    tenant_host=urlparse(self.base).hostname.replace('.my.salesforce.com','.lightning.force.com')
+                    if parsed.hostname==tenant_host and parsed.path.startswith('/cms/delivery/'):
+                        url=parsed.path+('?' + parsed.query if parsed.query else '')
+                    if not urlparse(url).path.startswith('/cms/media/'):
+                        urls.append(url)
+            except ConnectionFailure:
+                continue
+        if not urls:
+            raise ConnectionFailure('CMS authoring metadata is readable, but no downloadable delivery URL was exposed by its existing workspace channels. Check channel access and publication to that channel; no publication settings were changed.')
+        return list(dict.fromkeys(urls))
+
     def media_urls(self,media_id):
         media_id=salesforce_id(media_id)
         kind=self._object_for_id(media_id)
@@ -150,10 +192,14 @@ class ProductImageClient(SalesforceCatalogClient):
                 raise ConnectionFailure('CMS media did not expose a valid content key or managed-content ID.')
             try:
                 content=self._request('GET',self.api_root()+'/connect/cms/contents/'+key)
-                urls.extend(self._cms_image_urls(content))
+                author_urls=list(self._cms_image_urls(content))
+                usable=[url for url in author_urls if not urlparse(url).path.startswith('/cms/media/')]
+                urls.extend(usable)
+                if any(urlparse(url).path.startswith('/cms/media/') for url in author_urls):
+                    urls=self.cms_delivery_urls(content)+urls
             except ConnectionFailure:
                 if not urls:
-                    raise ConnectionFailure('The OAuth user can see ProductMedia but cannot resolve this CMS image. Check its CMS workspace access and the media diagnostic.') from None
+                    raise
         if not urls:
             raise ConnectionFailure('The media record exposes no downloadable image URL. Check CMS workspace access and image publication/delivery configuration.')
         return list(dict.fromkeys(urls))

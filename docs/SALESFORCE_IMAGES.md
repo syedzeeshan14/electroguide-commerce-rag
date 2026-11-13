@@ -42,3 +42,11 @@ OAuth credentials are sent only to your configured Salesforce My Domain. Redirec
 Images must be valid PNG, JPEG, WebP or GIF, at most 10 MB and 25 megapixels. Raw bytes are stored beneath ignored `data/product_images`, scoped to the configured org. Cache metadata contains product/media IDs and a timestamp, with no credentials or source URLs. Images are not automatically refreshed on every storefront request; rerun the targeted sync after replacing a picture. A failed sync preserves the previous cached image. To clear all local cached images, stop the app and remove only `data/product_images`, then sync the desired pictures again. Product snapshots and embeddings are separate.
 
 This remains a Salesforce Product2 catalog integration with a Streamlit storefront and simulated checkout.
+
+## Enhanced CMS authoring URLs
+
+A content document can expose a file source reference (for example an ID beginning `0sN`) and `/cms/media/MC...`. That is an authoring-media URL and can return a login page even when the metadata API succeeds. The connector now reads the existing channels of the content's workspace, fetches the channel delivery document for that content key, and uses its media URL. It does not create channels or publish content. The `0sN` source reference is not treated as a ContentVersion ID.
+
+For a delivery URL on the same tenant's Lightning host, only `/cms/delivery/` paths are mapped to the configured My Domain for authenticated download. Arbitrary Lightning pages and authoring URLs are not rewritten. Access to metadata and an `isPublished` flag alone do not prove that a delivery channel is accessible to this OAuth user. A missing channel/delivery URL reports that limitation explicitly. This route is covered by mocked regression tests; the owner must still verify the actual image download against their org.
+
+Salesforce API references: [CMS Space Channels](https://developer.salesforce.com/docs/platform/connect-rest-api/guide/connect_resources_cms_space_channels.html) and [Connect REST API guide](https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/salesforce_chatter_rest_api.pdf), Enhanced CMS Workspaces Resources, CMS Delivery Content.
