@@ -49,13 +49,49 @@ def local_report(config):
             'local_settings_files':paths}
 
 
+def configure_local_credentials(root,config,domain,key,secret):
+    """Verify the newly entered credentials, then save only to local secrets.toml."""
+    from scripts.setup_salesforce_orders import save_local_settings
+    domain=domain.strip();key=key.strip();secret=secret.strip()
+    if not key or not secret or any(c.isspace() or c in '\"\'' for c in key+secret):
+        raise ConnectionFailure('Paste only the Consumer Key and Consumer Secret, without quotes, spaces, or setting names.')
+    updates={'SALESFORCE_INSTANCE_URL':domain,'SALESFORCE_CLIENT_ID':key,
+             'SALESFORCE_CLIENT_SECRET':secret,'SALESFORCE_ACCESS_TOKEN':''}
+    candidate={**config,**updates}
+    client=LightningClient(candidate)
+    client.authenticate()
+    old_host=urlparse(config.get('SALESFORCE_INSTANCE_URL','')).hostname
+    if old_host!=urlparse(domain).hostname:
+        updates.update(SALESFORCE_ORDER_SYNC='off',SALESFORCE_ORDER_ACCOUNT_ID='',
+                       SALESFORCE_ORDER_PRICEBOOK_ID='',SALESFORCE_ORDER_DEMO_PRICING='false',
+                       SALESFORCE_PRICEBOOK_ID='',SALESFORCE_PRICEBOOK_CURRENCY='',
+                       SALESFORCE_CATALOG_PRICING='demo_metadata',CATALOG_SOURCE='demo',SALESFORCE_IMAGE_HOSTS='')
+    save_local_settings(Path(root)/'.streamlit/secrets.toml',updates)
+    return {**config,**updates}
+
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compare-app',action='store_true',help='Compare the selected app Consumer Key privately and its My Domain')
     parser.add_argument('--test-login',action='store_true',help='Request an OAuth token; token is never printed or stored')
+    parser.add_argument('--configure-local',action='store_true',help='Privately enter new credentials, test OAuth, and save them only in the local project secrets file')
     args=parser.parse_args()
+    if args.configure_local and args.compare_app:
+        parser.error('Use --configure-local or --compare-app separately')
     try:
         config=settings()
+        if args.configure_local:
+            if Path.cwd().resolve()!=ROOT.resolve():
+                parser.exit(1,'Change to the project folder before configuring credentials: '+str(ROOT)+'\n')
+            print('Enter the NEW org/app values. Key and secret are hidden; saved only in the local project secrets file after successful OAuth.')
+            domain=input('Current My Domain URL (https://...my.salesforce.com): ')
+            key=getpass.getpass('Consumer Key (hidden): ')
+            secret=getpass.getpass('Consumer Secret (hidden): ')
+            config=configure_local_credentials(ROOT,config,domain,key,secret)
+            del key,secret
+            print('OAuth succeeded and local Salesforce credentials were saved. Token not stored. Other unrelated settings were preserved.')
+            if config.get('CATALOG_SOURCE')=='demo':
+                print('Catalog is in demo mode until you import and sync products from this org.')
         print(json.dumps(local_report(config),indent=2))
         if args.compare_app:
             expected_domain=input('Paste Current My Domain URL from the SAME org as the app: ')
@@ -65,7 +101,7 @@ if __name__=='__main__':
             print(json.dumps(comparison,indent=2))
             if not all(comparison.values()):
                 parser.exit(1,'Configuration mismatch. Update the local secrets file using that same org/app, then rerun. No credentials were changed or stored.\n')
-        if args.test_login:
+        if args.test_login and not args.configure_local:
             client=LightningClient(config)
             if client.token:
                 parser.exit(1,'Clear the optional SALESFORCE_ACCESS_TOKEN locally to test the client-credentials flow itself.\n')
