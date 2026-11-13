@@ -57,11 +57,17 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply',action='store_true',help='Create the dedicated demo Account/price book and enable on-demand demo USD pricing')
     parser.add_argument('--configure-local',action='store_true',help='Save non-secret order settings in the existing local secrets.toml; requires --apply')
+    parser.add_argument('--diagnose',action='store_true',help='Read-only object and field capability report; no setup writes')
     args=parser.parse_args()
+    if args.diagnose and (args.apply or args.configure_local):
+        parser.error('--diagnose cannot be combined with setup-write flags')
     if args.configure_local and not args.apply:
         parser.error('--configure-local requires --apply')
     try:
         client=SalesforceOrderClient(settings())
+        if args.diagnose:
+            print(json.dumps(client.access_diagnostic(),indent=2))
+            parser.exit(0)
         access=client.order_access()
         print(json.dumps(access,indent=2))
         if args.apply:

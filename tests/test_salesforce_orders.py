@@ -70,6 +70,17 @@ class SalesforceOrderTests(unittest.TestCase):
         for change in [{'quantity':0},{'quantity':True},{'price':float('nan')},{'source':'demo'},{'currency':'INR'},{'quantity':11}]:
             with self.assertRaises(ConnectionFailure): cart_details({'EG-000001':{**CART['EG-000001'],**change}})
 
+    def test_diagnostic_identifies_disabled_objects_and_specific_fields(self):
+        client=SalesforceOrderClient(CONFIG)
+        with patch.object(client,'_request',side_effect=[
+            {'queryable':True,'createable':False,'fields':[{'name':'AccountId','createable':False}]},
+            ConnectionFailure('Salesforce returned HTTP 403')]):
+            report=client.access_diagnostic()
+        self.assertFalse(report['Order']['createable'])
+        self.assertIn('Status',report['Order']['missing_readable_fields'])
+        self.assertIn('AccountId',report['Order']['missing_writable_fields'])
+        self.assertIn('error',report['OrderItem'])
+
     def test_single_currency_org_must_be_usd(self):
         client=SalesforceOrderClient(CONFIG)
         schemas=[]

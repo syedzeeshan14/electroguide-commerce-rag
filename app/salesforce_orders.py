@@ -13,6 +13,8 @@ from app.salesforce_catalog import demo_metadata
 BOOK_NAME='ElectroGuide Academic USD'
 BOOK_DESCRIPTION='ElectroGuide academic demo pricing; not a live storefront price book.'
 ACCOUNT_NAME='ElectroGuide Academic Demo Customer'
+REQUIRED_FIELDS={'Order':{'AccountId','EffectiveDate','Status','Pricebook2Id','PoNumber','Description'},
+                 'OrderItem':{'OrderId','PricebookEntryId','Quantity','UnitPrice'}}
 
 
 def money(value):
@@ -47,14 +49,27 @@ def cart_details(cart):
 
 
 class SalesforceOrderClient(LightningClient):
+    def access_diagnostic(self):
+        report={}
+        for name,required in REQUIRED_FIELDS.items():
+            try:
+                schema=self._request('GET',self.api_root()+f'/sobjects/{name}/describe')
+                fields={field['name']:field for field in schema.get('fields',[])}
+                report[name]={'queryable':schema.get('queryable') is True,
+                              'createable':schema.get('createable') is True,
+                              'missing_readable_fields':sorted(required-set(fields)),
+                              'missing_writable_fields':sorted(field for field in required if not fields.get(field,{}).get('createable'))}
+            except ConnectionFailure as error:
+                report[name]={'error':str(error)}
+        return report
+
     def order_access(self):
         schemas={name:self._request('GET',self.api_root()+f'/sobjects/{name}/describe') for name in ('Order','OrderItem')}
-        needed={'Order':{'AccountId','EffectiveDate','Status','Pricebook2Id','PoNumber','Description'},
-                'OrderItem':{'OrderId','PricebookEntryId','Quantity','UnitPrice'}}
+        needed=REQUIRED_FIELDS
         for name,schema in schemas.items():
             writable={field['name'] for field in schema.get('fields',[]) if field.get('createable')}
             if not schema.get('createable') or not schema.get('queryable') or not needed[name]<=writable:
-                raise ConnectionFailure(name+' read/create access or required field access is missing. Enable Orders and grant the integration user access.')
+                raise ConnectionFailure(name+' access check failed: queryable='+str(schema.get('queryable') is True)+', createable='+str(schema.get('createable') is True)+', missing writable fields='+', '.join(sorted(needed[name]-writable))+'. Check Order Settings and permissions for the External Client App Run As user; use --diagnose for both objects.')
         fields={field['name'] for field in schemas['Order'].get('fields',[])}
         if not {'OrderNumber','TotalAmount','Id'}<=fields:
             raise ConnectionFailure('The API user must be able to read OrderNumber and TotalAmount.')

@@ -64,3 +64,9 @@ Order and OrderItem creation share an `allOrNone` composite batch. Invalid lines
 ## Verification scope
 
 Automated tests cover Salesforce-generated number display, atomic parent/line requests, price/currency checks, stale reference rejection, receipt recovery, preservation of the bag on failure and local configuration updates. These use mocked Salesforce responses. The owner must run the access check and verify an actual draft order in their org; no live order was created from the development workspace.
+
+## Diagnose missing order permissions
+
+Run `python -m scripts.setup_salesforce_orders --diagnose` for a read-only report of Order/OrderItem query/create flags and missing readable/writable fields. This mode cannot be combined with `--apply` or `--configure-local`. It makes no setup or order writes and prints no credentials.
+
+In Setup → Order Settings, enable Orders if the edition provides this setting. In Setup → External Client App Manager → ElectroGuide Catalog Integration → Policies, identify the configured Client Credentials Run As user. Grant Order read/create access and the indicated field access to that user, not merely to a different browser-login user. Order Products access must also be available; Salesforce can derive its access from the parent Order. If Order Settings or relevant object access is unavailable in this Starter edition, the org may need a suitable edition/entitlement. Additional Commerce Admin permissions alone do not establish Order creation entitlement. Rerun the read-only check after changes.
