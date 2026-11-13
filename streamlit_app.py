@@ -17,6 +17,7 @@ st.markdown('''<style>
 [data-testid="stToolbar"]{visibility:hidden}
 .block-container{max-width:1260px}
 .nav-logo{padding:3px 0 22px}.match-label{font-size:11px;letter-spacing:1.5px;font-weight:800;text-transform:uppercase;color:#55735c;margin-bottom:12px}.best-label{background:#1b503d;color:#fff;padding:9px 14px;border-radius:9px;display:inline-block}.match-reason{font-size:13px;line-height:1.7;color:#45644e;margin:0 0 15px}.finder-intro{font-size:15px;color:#5c7161;line-height:1.7;max-width:720px}.match-question{padding:12px 18px;border-left:3px solid #6a8f68;background:#eef3e8;border-radius:0 10px 10px 0;font-size:14px;margin:15px 0}.hero{min-height:280px}.hero h1{font-size:48px}.product-name{min-height:54px}.footer{margin-top:30px}.stForm{border-radius:18px}
+[data-testid="stImage"] img{height:210px;object-fit:contain;border-radius:13px;background:#f0f3eb}
 @media(max-width:760px){.hero h1{font-size:34px}.nav-logo{padding-bottom:0}.hero{min-height:240px}}
 </style>''',unsafe_allow_html=True)
 catalog=prepare_catalog()
@@ -43,8 +44,12 @@ elif getattr(catalog,'source','demo')=='salesforce_catalog_snapshot':
 def product_card(product,prefix,reason=None):
     with st.container(border=True):
         photo=cached_image_path(product,ROOT,config)
+        category_photo=ROOT/'assets/categories'/f"{product['category']}.jpg" if product['category'] in ('laptop','mobile','headphones','camera') else None
         if photo:
             st.image(str(photo),width='stretch')
+        elif category_photo and category_photo.is_file():
+            st.image(str(category_photo),width='stretch')
+            st.caption('Representative photo')
         else:
             st.markdown('<div class="product-art">'+illustration(product['category'])+'</div>',unsafe_allow_html=True)
         st.caption(product['id'])
@@ -61,7 +66,7 @@ def product_card(product,prefix,reason=None):
         with st.expander('Product details'):
             for key,value in specs.items():
                 st.write(f"**{key.replace('_',' ').title()}:** {value}")
-            st.caption(f"{product['id']} · "+('Image synced from Salesforce' if photo else 'Representative illustration'))
+            st.caption(f"{product['id']} · "+('Image synced from Salesforce' if photo else 'Representative category photo' if category_photo and category_photo.is_file() else 'Representative illustration'))
         if st.button('Add to bag',type='primary',width='stretch',key=f"{prefix}-{product['id']}",disabled=product['stock']<=0):
             existing=st.session_state.cart.get(product['id'])
             quantity=existing['quantity']+1 if existing else 1
@@ -189,4 +194,4 @@ else:
         order=st.session_state.orders[-1]
         st.success(f"Demo order {order['id']} confirmed · ${order['subtotal']:,.2f}")
 
-st.markdown('<div class="footer"><strong>electroguide.</strong> &nbsp; Find your fit.<br>Demo storefront · Synthetic products and representative illustrations · No real payments</div>',unsafe_allow_html=True)
+st.markdown('<div class="footer"><strong>electroguide.</strong> &nbsp; Find your fit.<br>Demo storefront · Synthetic products · Representative photos and illustrations · No real payments</div>',unsafe_allow_html=True)

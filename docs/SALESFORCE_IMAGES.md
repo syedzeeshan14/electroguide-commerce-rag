@@ -58,3 +58,7 @@ Use the exact product code, not just its name: synthetic variants can share name
 Run `python -m scripts.check_salesforce_image --product-code EG-040683` from the same project directory used to launch the app. This local-only diagnostic reports the project folder, active catalog source, whether that exact product is present, its Salesforce ID, whether an image is cached for that ID, and whether the installed renderer supports cached images. It makes no Salesforce/OpenAI request and prints no credentials. A demo catalog, a different Salesforce record ID, an older source file, or a different project folder can each explain a successful download followed by an illustration.
 
 Shop includes out-of-stock products so their details and pictures remain visible. Cards show `Out of stock` and disable Add to bag when the snapshot's synthetic stock is zero. Recommendations still consider in-stock products only. EG-040683 has zero stock in the bundled synthetic dataset; stock is not increased just to display its image.
+
+## Category photo fallbacks
+
+Laptop, mobile, headphones and camera cards now use bundled representative category photographs when no synced Salesforce picture exists. These photos are examples, not SKU-specific manufacturer images; their cards are labeled `Representative photo`. Other categories retain SVG illustrations. Salesforce pictures still take priority. The same renderer serves Shop and recommendation cards. See `assets/categories/CREDITS.md` for photo sources and license.
