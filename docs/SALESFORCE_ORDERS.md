@@ -53,7 +53,7 @@ Restart Streamlit:
 
 Add available Salesforce-catalog products to the bag (at most 20 distinct products). Choose **Save draft order**. Wait for the confirmation containing the Salesforce order number, such as `00000123`. Select **View in Salesforce**, log in with your own Salesforce browser session, and show the same Order Number and its Order Products.
 
-You can also open your org's `/lightning/o/Order/list`, select All Orders, and locate that number. These records appear under standard Orders, not the unprovisioned Commerce Store page. OrderNumber is an automatically generated Salesforce value; the connector's `EG-...` purchase-order reference is an internal retry reference, not the displayed order number.
+You can also open your org's `/lightning/o/Order/list`, select All Orders, and locate that number. These records appear under standard Orders, not the unprovisioned Commerce Store page. OrderNumber is an automatically generated Salesforce value; the connector's `EG-...` reference is internal retry metadata, not the displayed order number.
 
 ## Failure and retry behavior
 
@@ -70,3 +70,7 @@ Automated tests cover Salesforce-generated number display, atomic parent/line re
 Run `python -m scripts.setup_salesforce_orders --diagnose` for a read-only report of Order/OrderItem query/create flags and missing readable/writable fields. This mode cannot be combined with `--apply` or `--configure-local`. It makes no setup or order writes and prints no credentials.
 
 In Setup → Order Settings, enable Orders if the edition provides this setting. In Setup → External Client App Manager → ElectroGuide Catalog Integration → Policies, identify the configured Client Credentials Run As user. Grant Order read/create access and the indicated field access to that user, not merely to a different browser-login user. Order Products access must also be available; Salesforce can derive its access from the parent Order. If Order Settings or relevant object access is unavailable in this Starter edition, the org may need a suitable edition/entitlement. Additional Commerce Admin permissions alone do not establish Order creation entitlement. Rerun the read-only check after changes.
+
+## Orgs without PoNumber
+
+`PoNumber` is not mandatory. The connector inspects Order metadata and chooses the first readable, writable, filterable reference field with room for the 35-character retry value: `ElectroGuide_Checkout_Reference__c`, `PoNumber`, `OrderReferenceNumber`, or `Name`. The selected field is shown in the check and diagnostic output. When Name is selected, the newly created Order's name holds the internal retry reference, while the customer still sees Salesforce's generated OrderNumber. The connector does not rename existing Orders. If no candidate is usable, it stops before creating an order and reports the required field access; a Text(80) unique external-ID custom field named `ElectroGuide_Checkout_Reference__c` is an optional explicit setup path. Keep reference-field access stable during pending checkouts.

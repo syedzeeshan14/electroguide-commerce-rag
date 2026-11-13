@@ -19,7 +19,7 @@ RECEIPT={'id':'00000123','salesforce_id':'801000000000001AAA','subtotal':200.5,'
 
 class SalesforceOrderTests(unittest.TestCase):
     def test_atomic_order_and_lines_use_salesforce_number(self):
-        client=SalesforceOrderClient(CONFIG)
+        client=SalesforceOrderClient(CONFIG);client._order_reference_field='Name'
         entry={'Id':'01u000000000001AAA','Product2Id':PRODUCT,'UnitPrice':100.25,'IsActive':True,'Product2':{'IsActive':True}}
         with patch.object(client,'require_usd') as currency,patch.object(client,'configured_records',return_value=(CONFIG['SALESFORCE_ORDER_ACCOUNT_ID'],CONFIG['SALESFORCE_ORDER_PRICEBOOK_ID'])),patch.object(client,'find_order',side_effect=[None,RECEIPT]),patch.object(client,'entries',return_value=[entry]),patch.object(client,'_request',return_value={'compositeResponse':[
             {'referenceId':'order','httpStatusCode':201,'body':{'id':RECEIPT['salesforce_id']}},
@@ -31,7 +31,8 @@ class SalesforceOrderTests(unittest.TestCase):
         self.assertTrue(payload['allOrNone'])
         order,line=payload['compositeRequest']
         self.assertEqual(order['body']['Status'],'Draft')
-        self.assertEqual(order['body']['PoNumber'],REFERENCE)
+        self.assertEqual(order['body']['Name'],REFERENCE)
+        self.assertNotIn('PoNumber',order['body'])
         self.assertEqual(line['body']['OrderId'],'@{order.id}')
         self.assertEqual(line['body']['Quantity'],2)
         self.assertEqual(line['body']['UnitPrice'],100.25)
@@ -85,9 +86,27 @@ class SalesforceOrderTests(unittest.TestCase):
         client=SalesforceOrderClient(CONFIG)
         schemas=[]
         for fields in [('AccountId','EffectiveDate','Status','Pricebook2Id','PoNumber','Description','OrderNumber','TotalAmount','Id'),('OrderId','PricebookEntryId','Quantity','UnitPrice')]:
-            schemas.append({'createable':True,'queryable':True,'fields':[{'name':field,'createable':True} for field in fields]})
+            schemas.append({'createable':True,'queryable':True,'fields':[{'name':field,'createable':True,'filterable':True,'length':80} for field in fields]})
         with patch.object(client,'_request',side_effect=schemas+[{'features':{'multiCurrency':False,'defaultCurrencyIsoCode':'INR'}}]):
             self.assertFalse(client.order_access()['usd_supported'])
+
+    def test_missing_po_number_uses_a_verified_supported_reference(self):
+        from app.salesforce_orders import REQUIRED_FIELDS
+        client=SalesforceOrderClient(CONFIG)
+        order_fields=REQUIRED_FIELDS['Order']|{'Name','Id','OrderNumber','TotalAmount'}
+        schemas=[{'createable':True,'queryable':True,'fields':[{'name':name,'createable':True,'filterable':True,'length':80} for name in names]} for names in (order_fields,REQUIRED_FIELDS['OrderItem'])]
+        with patch.object(client,'_request',side_effect=schemas+[{'features':{'multiCurrency':False,'defaultCurrencyIsoCode':'USD'}}]):
+            access=client.order_access()
+        self.assertTrue(access['usd_supported'])
+        self.assertEqual(access['reference_field'],'Name')
+        self.assertEqual(client.reference_field(),'Name')
+
+    def test_unusable_reference_fields_fail_before_writes(self):
+        from app.salesforce_orders import reference_capabilities
+        selected,_=reference_capabilities({'fields':[{'name':'Name','createable':True,'filterable':False,'length':80}]})
+        self.assertIsNone(selected)
+        selected,_=reference_capabilities({'fields':[{'name':'Name','createable':True,'filterable':True,'length':20}]})
+        self.assertIsNone(selected)
 
     def test_local_setup_preserves_secrets_and_places_keys_above_tables(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -132,6 +151,7 @@ class SalesforceOrderTests(unittest.TestCase):
 
     def test_conflicting_remote_reference_is_not_accepted(self):
         client=SalesforceOrderClient(CONFIG)
+        client._order_reference_field='Name'
         _,signature,total=cart_details(CART)
         with patch.object(client,'query',return_value=iter([{'Id':RECEIPT['salesforce_id'],'OrderNumber':'00000123','TotalAmount':200.5,'Status':'Draft','Description':'different cart'}])):
             with self.assertRaisesRegex(ConnectionFailure,'conflicting'):

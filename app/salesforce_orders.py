@@ -13,8 +13,18 @@ from app.salesforce_catalog import demo_metadata
 BOOK_NAME='ElectroGuide Academic USD'
 BOOK_DESCRIPTION='ElectroGuide academic demo pricing; not a live storefront price book.'
 ACCOUNT_NAME='ElectroGuide Academic Demo Customer'
-REQUIRED_FIELDS={'Order':{'AccountId','EffectiveDate','Status','Pricebook2Id','PoNumber','Description'},
+REQUIRED_FIELDS={'Order':{'AccountId','EffectiveDate','Status','Pricebook2Id','Description'},
                  'OrderItem':{'OrderId','PricebookEntryId','Quantity','UnitPrice'}}
+REFERENCE_FIELDS=('ElectroGuide_Checkout_Reference__c','PoNumber','OrderReferenceNumber','Name')
+
+
+def reference_capabilities(schema):
+    fields={field['name']:field for field in schema.get('fields',[])}
+    candidates={name:{'readable':name in fields,'writable':fields.get(name,{}).get('createable') is True,
+                      'filterable':fields.get(name,{}).get('filterable') is True,
+                      'length':fields.get(name,{}).get('length',0)} for name in REFERENCE_FIELDS}
+    selected=next((name for name,flags in candidates.items() if flags['readable'] and flags['writable'] and flags['filterable'] and flags['length']>=35),None)
+    return selected,candidates
 
 
 def money(value):
@@ -59,6 +69,9 @@ class SalesforceOrderClient(LightningClient):
                               'createable':schema.get('createable') is True,
                               'missing_readable_fields':sorted(required-set(fields)),
                               'missing_writable_fields':sorted(field for field in required if not fields.get(field,{}).get('createable'))}
+                if name=='Order':
+                    selected,candidates=reference_capabilities(schema)
+                    report[name].update(reference_field=selected,reference_candidates=candidates)
             except ConnectionFailure as error:
                 report[name]={'error':str(error)}
         return report
@@ -70,6 +83,9 @@ class SalesforceOrderClient(LightningClient):
             writable={field['name'] for field in schema.get('fields',[]) if field.get('createable')}
             if not schema.get('createable') or not schema.get('queryable') or not needed[name]<=writable:
                 raise ConnectionFailure(name+' access check failed: queryable='+str(schema.get('queryable') is True)+', createable='+str(schema.get('createable') is True)+', missing writable fields='+', '.join(sorted(needed[name]-writable))+'. Check Order Settings and permissions for the External Client App Run As user; use --diagnose for both objects.')
+        self._order_reference_field,_=reference_capabilities(schemas['Order'])
+        if not self._order_reference_field:
+            raise ConnectionFailure('No readable, writable, filterable Order reference field of at least 35 characters is available. Run --diagnose. Grant access to a supported reference field, or create ElectroGuide_Checkout_Reference__c as a Text(80) unique external-ID field and grant access.')
         fields={field['name'] for field in schemas['Order'].get('fields',[])}
         if not {'OrderNumber','TotalAmount','Id'}<=fields:
             raise ConnectionFailure('The API user must be able to read OrderNumber and TotalAmount.')
@@ -82,7 +98,7 @@ class SalesforceOrderClient(LightningClient):
             features=self._request('GET',self.api_root()+'/connect/organization').get('features',{})
             single_currency=features.get('defaultCurrencyIsoCode')
             usd=features.get('multiCurrency') is False and single_currency=='USD'
-        return {'order_create':True,'order_item_create':True,'multi_currency':self.multi_currency,'single_currency':single_currency,'usd_supported':usd}
+        return {'order_create':True,'order_item_create':True,'multi_currency':self.multi_currency,'single_currency':single_currency,'usd_supported':usd,'reference_field':self._order_reference_field}
 
     def require_usd(self):
         access=self.order_access()
@@ -149,8 +165,15 @@ class SalesforceOrderClient(LightningClient):
                     batch.append({'method':'POST','url':self.api_root()+'/sobjects/PricebookEntry','referenceId':f'price{index}','body':body})
                 self.composite(batch)
 
+    def reference_field(self):
+        field=getattr(self,'_order_reference_field',None)
+        if field not in REFERENCE_FIELDS:
+            raise ConnectionFailure('Order reference field has not been verified. Rerun the order access check.')
+        return field
+
     def find_order(self,reference,account,book,signature,total):
-        rows=list(self.query("SELECT Id,OrderNumber,TotalAmount,Status,Description FROM Order WHERE PoNumber='"+reference+f"' AND AccountId='{account}' AND Pricebook2Id='{book}' LIMIT 2"))
+        field=self.reference_field()
+        rows=list(self.query("SELECT Id,OrderNumber,TotalAmount,Status,Description FROM Order WHERE "+field+"='"+reference+f"' AND AccountId='{account}' AND Pricebook2Id='{book}' LIMIT 2"))
         if not rows: return None
         if len(rows)!=1 or rows[0].get('Description')!='ElectroGuide academic demo '+signature or money(rows[0].get('TotalAmount'))!=total:
             raise ConnectionFailure('The order reference has conflicting Salesforce data. Review it before retrying; no new order was created.')
@@ -185,7 +208,7 @@ class SalesforceOrderClient(LightningClient):
             if money(entry['UnitPrice'])!=money(line['price']):
                 raise ConnectionFailure('The bag price differs from the Salesforce USD price book. Sync matching prices and rebuild the bag; no order was created.')
         body={'AccountId':account,'Pricebook2Id':book,'EffectiveDate':date.today().isoformat(),'Status':'Draft',
-              'PoNumber':reference,'Description':'ElectroGuide academic demo '+signature}
+              self.reference_field():reference,'Description':'ElectroGuide academic demo '+signature}
         if self.multi_currency: body['CurrencyIsoCode']='USD'
         batch=[{'method':'POST','url':self.api_root()+'/sobjects/Order','referenceId':'order','body':body}]
         for index,line in enumerate(lines):
