@@ -132,3 +132,7 @@ Set multicurrency true only when it is actually enabled; the query then filters 
 ## What this demonstrates
 
 **Salesforce product-catalog integration + semantic product recommendation + a Streamlit shopping prototype.** No Commerce store, Salesforce baskets, native inventory, real payments, customer identity system, or Salesforce Commerce checkout is claimed. This is a smaller, accurate MS project scope that retains the existing recommendation work.
+
+### OAuth HTTP 400 troubleshooting
+
+The platform connector now displays recognized OAuth error codes from the token response, such as `invalid_client` or `invalid_grant`, with fixed troubleshooting guidance. It does not print token response bodies, secrets, or arbitrary provider descriptions. `invalid_client` calls for checking the new org's current Consumer Key/Secret and enabled app; `invalid_grant` calls for checking Client Credentials Flow and its active Run As user. A generic HTTP 400 is not evidence of `API_DISABLED_FOR_ORG`. The latter is an explicit API error code, not the conditional explanatory footer printed by the catalog check.

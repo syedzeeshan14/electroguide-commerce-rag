@@ -26,6 +26,24 @@ def sf_record(product=None):
 
 
 class LightningTests(unittest.TestCase):
+    def test_oauth_error_code_visible_but_provider_description_and_secrets_hidden(self):
+        client=LightningClient({**CONFIG,'SALESFORCE_ACCESS_TOKEN':'','SALESFORCE_CLIENT_ID':'fake-client','SALESFORCE_CLIENT_SECRET':'fake-secret'})
+        reply=Mock(status_code=400)
+        reply.json.return_value={'error':'invalid_client','error_description':'private fake-secret provider output'}
+        with patch('app.lightning.requests.request',return_value=reply):
+            with self.assertRaises(ConnectionFailure) as error: client.authenticate()
+        self.assertIn('OAuth invalid_client',str(error.exception))
+        self.assertNotIn('fake-secret',str(error.exception))
+        self.assertNotIn('provider output',str(error.exception))
+        reply.json.return_value={'error':'invalid_grant','error_description':'no client credentials user enabled'}
+        with patch('app.lightning.requests.request',return_value=reply):
+            with self.assertRaises(ConnectionFailure) as error: client.authenticate()
+        self.assertIn('Run As user',str(error.exception))
+        reply.json.return_value={'error':'fake-secret','error_description':'fake-secret'}
+        with patch('app.lightning.requests.request',return_value=reply):
+            with self.assertRaises(ConnectionFailure) as error: client.authenticate()
+        self.assertNotIn('fake-secret',str(error.exception))
+
     def test_commerce_import_schema_and_round_trip(self):
         with tempfile.TemporaryDirectory() as directory:
             report=export(directory,count=100,batch_size=40)
