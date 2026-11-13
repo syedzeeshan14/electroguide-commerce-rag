@@ -52,51 +52,61 @@ class LightningClient:
         if authenticated:
             self.authenticate()
         headers={'Authorization':'Bearer '+self.token} if authenticated else {}
+        operation=method.upper()+' '+path.split('?',1)[0]
         try:
             response=requests.request(method,self.base+path,headers=headers,timeout=30,allow_redirects=False,**kwargs)
-            if response.status_code!=200:
-                error_code='';hint=''
-                try:
-                    body=response.json()
-                    candidate=body[0].get('errorCode','') if isinstance(body,list) and body and isinstance(body[0],dict) else ''
-                    if isinstance(candidate,str) and re.fullmatch(r'[A-Z_]{3,80}',candidate):
-                        error_code=' ('+candidate+')'
-                    if path=='/services/oauth2/token' and isinstance(body,dict):
-                        code=body.get('error')
-                        oauth_hints={
-                            'invalid_client':'Verify the new org consumer key and current consumer secret; ensure the app is enabled.',
-                            'invalid_client_id':'The consumer key was not accepted. Use the Consumer Key from this org External Client App.',
-                            'invalid_client_credentials':'The client credentials were not accepted. Recopy the current consumer key and secret privately.',
-                            'invalid_grant':'Check Client Credentials Flow and its active Run As user in this org app policies.',
-                            'unauthorized_client':'Check that Client Credentials Flow is enabled for this app.',
-                            'unsupported_grant_type':'This app or domain did not accept the client-credentials grant.',
-                            'invalid_scope':'Check the app OAuth API scope.',
-                            'invalid_request':'Check the app OAuth configuration and configured My Domain.',
-                            'access_denied':'The app or execution user is denied by OAuth policy.',
-                            'server_error':'Salesforce could not process the OAuth request.',
-                            'temporarily_unavailable':'Salesforce OAuth is temporarily unavailable.'}
-                        if isinstance(code,str) and code in oauth_hints:
-                            error_code=' (OAuth '+code+')'
-                            hint=oauth_hints[code]
-                            known_descriptions={
-                                'no client credentials user enabled':'Select an active Run As user under the app Policies Client Credentials Flow settings and save.',
-                                'request not supported on this domain':'Use the new org My Domain base URL ending in .my.salesforce.com.',
-                                'user is inactive':'The configured Run As user must be active.',
-                                'user is frozen':'Unfreeze or select an active permitted Run As user.',
-                                'client credentials flow not enabled':'Enable Client Credentials Flow in the app settings and policies.'}
-                            description=body.get('error_description')
-                            if isinstance(description,str):
-                                hint=known_descriptions.get(description.strip().lower(),hint)
+        except requests.Timeout:
+            raise ConnectionFailure('Salesforce request timed out during '+operation+'. A write may already have completed. Rerun the same setup or checkout reference to recover its result.') from None
+        except requests.exceptions.SSLError:
+            raise ConnectionFailure('TLS certificate validation failed during '+operation+'. Check the local certificate/proxy configuration; keep TLS verification enabled.') from None
+        except requests.ConnectionError:
+            raise ConnectionFailure('Could not connect to Salesforce during '+operation+'. Check connectivity and the configured My Domain.') from None
+        except requests.RequestException:
+            raise ConnectionFailure('Salesforce request did not complete during '+operation+'. No response body or credentials were logged.') from None
+        if response.status_code!=200:
+            error_code='';hint=''
+            try:
+                body=response.json()
+                candidate=body[0].get('errorCode','') if isinstance(body,list) and body and isinstance(body[0],dict) else ''
+                if isinstance(candidate,str) and re.fullmatch(r'[A-Z_]{3,80}',candidate):
+                    error_code=' ('+candidate+')'
+                if path=='/services/oauth2/token' and isinstance(body,dict):
+                    code=body.get('error')
+                    oauth_hints={
+                        'invalid_client':'Verify the new org consumer key and current consumer secret; ensure the app is enabled.',
+                        'invalid_client_id':'The consumer key was not accepted. Use the Consumer Key from this org External Client App.',
+                        'invalid_client_credentials':'The client credentials were not accepted. Recopy the current consumer key and secret privately.',
+                        'invalid_grant':'Check Client Credentials Flow and its active Run As user in this org app policies.',
+                        'unauthorized_client':'Check that Client Credentials Flow is enabled for this app.',
+                        'unsupported_grant_type':'This app or domain did not accept the client-credentials grant.',
+                        'invalid_scope':'Check the app OAuth API scope.',
+                        'invalid_request':'Check the app OAuth configuration and configured My Domain.',
+                        'access_denied':'The app or execution user is denied by OAuth policy.',
+                        'server_error':'Salesforce could not process the OAuth request.',
+                        'temporarily_unavailable':'Salesforce OAuth is temporarily unavailable.'}
+                    if isinstance(code,str) and code in oauth_hints:
+                        error_code=' (OAuth '+code+')'
+                        hint=oauth_hints[code]
+                        known_descriptions={
+                            'no client credentials user enabled':'Select an active Run As user under the app Policies Client Credentials Flow settings and save.',
+                            'request not supported on this domain':'Use the new org My Domain base URL ending in .my.salesforce.com.',
+                            'user is inactive':'The configured Run As user must be active.',
+                            'user is frozen':'Unfreeze or select an active permitted Run As user.',
+                            'client credentials flow not enabled':'Enable Client Credentials Flow in the app settings and policies.'}
+                        description=body.get('error_description')
+                        if isinstance(description,str):
+                            hint=known_descriptions.get(description.strip().lower(),hint)
 
-                except (ValueError,TypeError):
-                    pass
-                raise ConnectionFailure(f'Salesforce returned HTTP {response.status_code}{error_code}. '+(hint or 'Check API entitlement, OAuth policy, user permissions, and token expiration.'))
+            except (ValueError,TypeError):
+                pass
+            raise ConnectionFailure(f'Salesforce returned HTTP {response.status_code}{error_code}. '+(hint or 'Check API entitlement, OAuth policy, user permissions, and token expiration.'))
+        try:
             payload=response.json()
-            if not isinstance(payload,(dict,list)):
-                raise ValueError('Unexpected JSON')
-            return payload
-        except (requests.RequestException,ValueError,TypeError):
-            raise ConnectionFailure('Could not read the Salesforce response. Check the configured domain and connection.') from None
+        except (ValueError,TypeError):
+            raise ConnectionFailure('Salesforce returned HTTP '+str(response.status_code)+' with non-JSON content during '+operation+'. It may be a proxy or login response. No response body or credentials were logged.') from None
+        if not isinstance(payload,(dict,list)):
+            raise ConnectionFailure('Salesforce returned an unexpected JSON value during '+operation+'. No response body was logged.')
+        return payload
 
     def api_root(self):
         if not self.version:

@@ -74,3 +74,7 @@ In Setup → Order Settings, enable Orders if the edition provides this setting.
 ## Orgs without PoNumber
 
 `PoNumber` is not mandatory. The connector inspects Order metadata and chooses the first readable, writable, filterable reference field with room for the 35-character retry value: `ElectroGuide_Checkout_Reference__c`, `PoNumber`, `OrderReferenceNumber`, or `Name`. The selected field is shown in the check and diagnostic output. When Name is selected, the newly created Order's name holds the internal retry reference, while the customer still sees Salesforce's generated OrderNumber. The connector does not rename existing Orders. If no candidate is usable, it stops before creating an order and reports the required field access; a Text(80) unique external-ID custom field named `ElectroGuide_Checkout_Reference__c` is an optional explicit setup path. Keep reference-field access stable during pending checkouts.
+
+### Setup transport failures
+
+Setup prints stages for access/currency checks, Standard Price Book lookup, demo record lookups, atomic creation and local configuration saving. Transport errors distinguish timeout, TLS validation, connection failure and HTTP 200 non-JSON responses and identify the method/API path, without logging credentials, query strings or response bodies. A timeout during a write can leave the result uncertain: rerun the same setup so it checks for existing dedicated demo records before creating missing ones. Do not delete records solely because a response was lost. TLS verification stays enabled.

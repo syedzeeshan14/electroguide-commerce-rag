@@ -27,12 +27,18 @@ def save_local_settings(path,updates):
     path.write_text(text,encoding='utf-8')
 
 
-def setup_demo(client):
+def setup_demo(client,progress=None):
+    def stage(message):
+        if progress: progress(message)
+    stage('Checking Order access and USD support…')
     client.require_usd()
+    stage('Checking the active Standard Price Book…')
     standards=list(client.query('SELECT Id FROM Pricebook2 WHERE IsStandard=true AND IsActive=true LIMIT 1'))
     if not standards:
         raise ConnectionFailure('Activate the Standard Price Book in Salesforce first. No records were written.')
+    stage('Looking up the academic demo account…')
     accounts=list(client.query("SELECT Id FROM Account WHERE Name='"+ACCOUNT_NAME+"' LIMIT 2"))
+    stage('Looking up the academic demo price book…')
     books=list(client.query("SELECT Id,Description,IsActive FROM Pricebook2 WHERE Name='"+BOOK_NAME+"' LIMIT 2"))
     if len(accounts)>1 or len(books)>1:
         raise ConnectionFailure('Duplicate academic demo accounts or price books exist; resolve them before setup.')
@@ -45,6 +51,7 @@ def setup_demo(client):
     if not books:
         batch.append({'method':'POST','url':client.api_root()+'/sobjects/Pricebook2','referenceId':'book',
                       'body':{'Name':BOOK_NAME,'Description':BOOK_DESCRIPTION,'IsActive':True}})
+    stage('Creating missing demo records atomically…' if batch else 'Reusing the existing academic demo account and price book.')
     created=client.composite(batch) if batch else {}
     account=salesforce_id(accounts[0]['Id'] if accounts else created['account']['id'],'001')
     book=salesforce_id(books[0]['Id'] if books else created['book']['id'],'01s')
@@ -71,8 +78,9 @@ if __name__=='__main__':
         access=client.order_access()
         print(json.dumps(access,indent=2))
         if args.apply:
-            updates=setup_demo(client)
+            updates=setup_demo(client,progress=lambda message:print(message,flush=True))
             if args.configure_local:
+                print('Saving local non-secret order settings…',flush=True)
                 save_local_settings(ROOT/'.streamlit/secrets.toml',updates)
                 print('Saved local draft-order settings. Restart Streamlit. No order was placed during setup.')
             else:

@@ -44,6 +44,25 @@ class LightningTests(unittest.TestCase):
             with self.assertRaises(ConnectionFailure) as error: client.authenticate()
         self.assertNotIn('fake-secret',str(error.exception))
 
+    def test_transport_errors_identify_stage_without_logging_body_or_credentials(self):
+        import requests
+        client=LightningClient(CONFIG)
+        for failure,expected in [(requests.Timeout('private-token'), 'timed out'),
+                                 (requests.exceptions.SSLError('private-token'),'TLS certificate'),
+                                 (requests.ConnectionError('private-token'),'Could not connect')]:
+            with patch('app.lightning.requests.request',side_effect=failure):
+                with self.assertRaises(ConnectionFailure) as error:
+                    client._request('POST','/services/data/v68.0/composite',json={'secret':'private-token'})
+            self.assertIn(expected,str(error.exception))
+            self.assertIn('POST /services/data/v68.0/composite',str(error.exception))
+            self.assertNotIn('private-token',str(error.exception))
+        reply=Mock(status_code=200);reply.json.side_effect=ValueError('private response body')
+        with patch('app.lightning.requests.request',return_value=reply):
+            with self.assertRaises(ConnectionFailure) as error:
+                client._request('GET','/services/data/v68.0/query?private=query')
+        self.assertIn('non-JSON',str(error.exception))
+        self.assertNotIn('private',str(error.exception))
+
     def test_commerce_import_schema_and_round_trip(self):
         with tempfile.TemporaryDirectory() as directory:
             report=export(directory,count=100,batch_size=40)
