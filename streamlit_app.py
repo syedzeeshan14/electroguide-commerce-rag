@@ -44,7 +44,7 @@ elif getattr(catalog,'source','demo')=='salesforce_catalog_snapshot':
 def product_card(product,prefix,reason=None):
     with st.container(border=True):
         photo=cached_image_path(product,ROOT,config)
-        category_photo=ROOT/'assets/categories'/f"{product['category']}.jpg" if product['category'] in ('laptop','mobile','headphones','camera') else None
+        category_photo=ROOT/'assets/categories'/f"{product['category']}.jpg" if product['category'] in CATEGORIES else None
         if photo:
             st.image(str(photo),width='stretch')
         elif category_photo and category_photo.is_file():

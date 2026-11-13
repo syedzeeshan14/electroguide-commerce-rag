@@ -61,4 +61,4 @@ Shop includes out-of-stock products so their details and pictures remain visible
 
 ## Category photo fallbacks
 
-Laptop, mobile, headphones and camera cards now use bundled representative category photographs when no synced Salesforce picture exists. These photos are examples, not SKU-specific manufacturer images; their cards are labeled `Representative photo`. Other categories retain SVG illustrations. Salesforce pictures still take priority. The same renderer serves Shop and recommendation cards. See `assets/categories/CREDITS.md` for photo sources and license.
+All ten categories (laptop, mobile, headphones, camera, TV, tablet, smartwatch, monitor, speaker and gaming) use bundled representative category photographs when no synced Salesforce picture exists. These photos are examples, not SKU-specific manufacturer images; their cards are labeled `Representative photo`. A missing local category photo falls back to an SVG illustration. Salesforce pictures still take priority. The same renderer serves Shop and recommendation cards. See `assets/categories/CREDITS.md` for photo sources and license.
